@@ -39,3 +39,6 @@ build/
 .idea/
 .DS_Store
 *.swp
+
+# Local agent brief (per kg-rag-legal convention)
+CLAUDE.md
