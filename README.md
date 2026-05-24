@@ -39,8 +39,6 @@ scripts/
   migrate_qdrant_date_ms.py     Qdrant payload-Migration für date_ms-Index
 
 webui/                          FastAPI + HTMX UI, Inspector, Live-Logs
-thesis/                         Markdown-Kapitel, references, citations
-  figures/                      PNG plus SVG plus gen_*.py-Skripte
 
 data/eval/                      Bootstrap-Artefakte (Git LFS)
   citation_graph.pkl            NetworkX DiGraph, 158'881 Knoten, 1.6M Kanten
@@ -132,19 +130,6 @@ Hardware-Setup des Original-Runs: 8× RTX 3090 (je 24 GB) auf einem Kubernetes-C
 - `/metrics/recall-ceiling` für die Pool-Recall-Wasserfälle
 - `/metrics/graph-nearness` für die Graph-Nearness-Verteilung
 - `/inspector/{query_id}` für Per-Query-Drilldown mit Graph-Visualisierung
-
-## Figuren reproduzieren
-
-```bash
-python thesis/figures/gen_pipeline_overview.py
-python thesis/figures/gen_graph_vs_embedding_expansion.py
-python thesis/figures/gen_graph_nearness_example.py
-python thesis/figures/gen_bi_vs_cross_encoder.py
-python thesis/figures/gen_citation_graph_schema.py
-python thesis/figures/gen_pool_vs_ranked.py
-```
-
-Jedes Skript schreibt das zugehörige PNG plus SVG nach `thesis/figures/`.
 
 ## PDF der Arbeit
 
