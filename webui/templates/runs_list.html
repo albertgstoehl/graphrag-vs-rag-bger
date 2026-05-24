@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_status_pill.html" import status_pill %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4 sm:mb-6 gap-2">
+  <h1 class="text-xl sm:text-2xl font-semibold">Runs</h1>
+  <a href="/runs/new"
+     class="bg-slate-900 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded hover:bg-slate-700 text-sm whitespace-nowrap">+ New Run</a>
+</div>
+
+<div class="bg-white rounded shadow-sm border border-slate-200 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-100 text-slate-600">
+      <tr>
+        <th class="text-left px-2 sm:px-3 py-2">#</th>
+        <th class="text-left px-2 sm:px-3 py-2">Started</th>
+        <th class="text-left px-3 py-2 hidden md:table-cell">Finished</th>
+        <th class="text-left px-2 sm:px-3 py-2">Status</th>
+        <th class="text-left px-2 sm:px-3 py-2">Dur</th>
+        <th class="text-left px-3 py-2 hidden md:table-cell">Systems</th>
+        <th class="text-left px-3 py-2 hidden sm:table-cell">Skip</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+          onclick="window.location='/runs/{{ r.id }}'">
+        <td class="px-2 sm:px-3 py-2 font-mono">
+          <a href="/runs/{{ r.id }}" class="text-slate-900 hover:underline"
+             onclick="event.stopPropagation()">{{ r.id }}</a>
+        </td>
+        <td class="px-2 sm:px-3 py-2 whitespace-nowrap text-xs sm:text-sm">
+          {{ r.started_at[5:16].replace('T',' ') }}
+        </td>
+        <td class="px-3 py-2 text-slate-500 hidden md:table-cell whitespace-nowrap">
+          {{ r.finished_at[5:16].replace('T',' ') if r.finished_at else '—' }}
+        </td>
+        <td class="px-2 sm:px-3 py-2">{{ status_pill(r.status) }}</td>
+        <td class="px-2 sm:px-3 py-2 whitespace-nowrap">{{ r.duration_s or '—' }}s</td>
+        <td class="px-3 py-2 text-xs text-slate-500 hidden md:table-cell">{{ r.systems }}</td>
+        <td class="px-3 py-2 text-xs text-slate-500 hidden sm:table-cell">
+          {% if r.skip_sample %}s{% endif %}{% if r.skip_retrieval %}r{% endif %}{% if r.skip_metrics %}m{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="px-3 py-8 text-center text-slate-500">No runs yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

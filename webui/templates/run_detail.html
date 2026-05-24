@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% from "_status_pill.html" import status_pill %}
+{% block content %}
+
+<div class="flex items-start justify-between mb-4 sm:mb-6 gap-2 flex-wrap">
+  <div>
+    <h1 class="text-xl sm:text-2xl font-semibold">Run #{{ run.id }}</h1>
+    <p class="text-xs sm:text-sm text-slate-500">
+      Started {{ run.started_at[5:16].replace('T',' ') }}
+    </p>
+  </div>
+  <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+    {{ status_pill(run.status) }}
+    {% if is_current and run.status == 'running' %}
+    <form method="post" action="/runs/{{ run.id }}/abort">
+      <button class="bg-rose-600 text-white px-3 py-1.5 rounded text-sm hover:bg-rose-700">
+        Abort
+      </button>
+    </form>
+    {% elif run.status in ('interrupted', 'aborted', 'failed') %}
+    <form method="post" action="/runs/{{ run.id }}/continue">
+      <button class="bg-emerald-600 text-white px-3 py-1.5 rounded text-sm hover:bg-emerald-700"
+              title="Start a new run with this run's config + resume=on. Stage 2 will skip queries already complete on disk and pick up where this one stopped.">
+        Continue
+      </button>
+    </form>
+    {% endif %}
+    <a href="/runs/{{ run.id }}/log.txt"
+       class="text-xs sm:text-sm text-slate-600 hover:underline">raw log</a>
+  </div>
+</div>
+
+<section class="bg-white rounded border border-slate-200 p-3 sm:p-4 mb-4 text-xs sm:text-sm">
+  <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
+    <div class="col-span-2 sm:col-span-3">
+      <span class="text-slate-500">Systems:</span> {{ run.systems }}
+    </div>
+    <div><span class="text-slate-500">Rankings:</span> {{ run.rankings }}</div>
+    <div><span class="text-slate-500">k:</span> {{ run.k_values }}</div>
+    <div><span class="text-slate-500">Queries:</span> {{ run.query_limit if run.query_limit else 'all' }}</div>
+    <div><span class="text-slate-500">Skip s/r/m:</span>
+      {{ run.skip_sample }}/{{ run.skip_retrieval }}/{{ run.skip_metrics }}
+    </div>
+    <div><span class="text-slate-500">Duration:</span> {{ run.duration_s or '—' }}s</div>
+    <div><span class="text-slate-500">Exit:</span> {{ run.exit_code if run.exit_code is not none else '—' }}</div>
+    <div class="col-span-2 sm:col-span-3">
+      <span class="text-slate-500">Finished:</span>
+      {{ run.finished_at[5:16].replace('T',' ') if run.finished_at else '—' }}
+    </div>
+  </div>
+  {% if run.error_message %}
+  <div class="mt-3 p-2 bg-rose-50 border border-rose-200 text-rose-700 rounded text-xs">
+    {{ run.error_message }}
+  </div>
+  {% endif %}
+</section>
+
+<div x-data='logViewer({{ run.id }}, {{ initial_stages_json | safe }})' class="space-y-4">
+
+  <!-- Stage stepper -->
+  <section class="bg-white rounded border border-slate-200 p-4">
+    <div class="flex items-start">
+      <!-- Sample -->
+      <div class="flex flex-col items-center w-20 sm:w-28">
+        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-base font-semibold transition-colors"
+             :class="nodeClass('sample')">
+          <span x-text="nodeIcon('sample')"></span>
+        </div>
+        <div class="text-xs mt-1.5 font-semibold">Sample</div>
+        <div class="text-[11px] text-slate-500 text-center min-h-[1em]"
+             x-text="subText('sample')"></div>
+      </div>
+      <div class="flex-1 h-0.5 mt-5 mx-1 transition-colors" :class="lineClass('sample')"></div>
+      <!-- Retrieval -->
+      <div class="flex flex-col items-center w-20 sm:w-28">
+        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-base font-semibold transition-colors"
+             :class="nodeClass('retrieval')">
+          <span x-text="nodeIcon('retrieval')"></span>
+        </div>
+        <div class="text-xs mt-1.5 font-semibold">Retrieval</div>
+        <div class="text-[11px] text-slate-500 text-center min-h-[1em]"
+             x-text="subText('retrieval')"></div>
+      </div>
+      <div class="flex-1 h-0.5 mt-5 mx-1 transition-colors" :class="lineClass('retrieval')"></div>
+      <!-- Metrics -->
+      <div class="flex flex-col items-center w-20 sm:w-28">
+        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-base font-semibold transition-colors"
+             :class="nodeClass('metrics')">
+          <span x-text="nodeIcon('metrics')"></span>
+        </div>
+        <div class="text-xs mt-1.5 font-semibold">Metrics</div>
+        <div class="text-[11px] text-slate-500 text-center min-h-[1em]"
+             x-text="subText('metrics')"></div>
+      </div>
+    </div>
+    <!-- Active stage description -->
+    <div class="mt-4 pt-3 border-t border-slate-100 text-sm flex items-baseline gap-2 flex-wrap"
+         x-show="active()" x-cloak>
+      <span class="font-semibold text-slate-700 capitalize" x-text="active()?.key"></span>
+      <span class="text-slate-500" x-text="active()?.tag"></span>
+      <span class="text-slate-600" x-text="active()?.description"></span>
+    </div>
+  </section>
+
+  <!-- Live log -->
+  <div class="bg-slate-900 text-slate-100 rounded overflow-hidden">
+    <div class="flex items-center justify-between gap-2 px-3 sm:px-4 py-2 bg-slate-800 text-xs sm:text-sm flex-wrap">
+      <div class="flex items-center gap-2 sm:gap-4 min-w-0">
+        <span>Live Log</span>
+        <span x-text="`(${lines.length})`" class="text-slate-400"></span>
+        <template x-for="(val,key) in progress" :key="key">
+          <span class="text-amber-300 whitespace-nowrap" x-text="`${val.current}/${val.total}`"></span>
+        </template>
+      </div>
+      <div class="flex items-center gap-2 ml-auto">
+        <label class="flex items-center gap-1">
+          <input type="checkbox" x-model="autoScroll"><span class="hidden sm:inline">auto</span><span class="sm:hidden">a</span>
+        </label>
+        <button @click="paused=!paused"
+                class="px-2 py-0.5 rounded bg-slate-700"
+                x-text="paused ? 'resume' : 'pause'"></button>
+        <button @click="lines=[]" class="px-2 py-0.5 rounded bg-slate-700">clear</button>
+      </div>
+    </div>
+    <pre x-ref="logPane"
+         class="p-3 text-xs font-mono overflow-auto whitespace-pre-wrap"
+         style="max-height: 70vh; min-height: 40vh;"><template x-for="line in lines" :key="line.id"><span x-text="line.text + '\n'"></span></template></pre>
+  </div>
+</div>
+
+<script>
+const STAGE_DESCRIPTIONS = {
+  sample:    "Sampling queries from valid_ids ∩ citation graph. Stratified by language with a fixed seed.",
+  retrieval: "Embed query → fetch ANN seeds from Qdrant → expand pool (graph 1/2-hop or kNN) → score each candidate by cosine, indegree, and cross-encoder → write top-k list per (system × ranking × k).",
+  metrics:   "Reading the per-(system × ranking × k) top-k lists and computing IR metrics: Recall, Precision, MRR, nDCG, Pool-Recall (ceiling) and Graph-Nearness.",
+};
+
+function logViewer(runId, initialStages){
+  return {
+    lines: [],
+    progress: {},
+    paused: false,
+    autoScroll: true,
+    _id: 0,
+    stages: initialStages,
+    stageOrder: ['sample', 'retrieval', 'metrics'],
+
+    init(){
+      const es = new EventSource(`/runs/${runId}/events`);
+      es.addEventListener('log', e => {
+        const line = JSON.parse(e.data).line;
+        this._push(line);
+        this._stageFromLog(line);
+      });
+      es.addEventListener('progress', e => {
+        const d = JSON.parse(e.data);
+        this.progress[d.stage] = { current: d.current, total: d.total };
+        if (this.stages[d.stage]) {
+          this.stages[d.stage].current = d.current;
+          this.stages[d.stage].total = d.total;
+        }
+      });
+      es.addEventListener('stage_started', e => {
+        const d = JSON.parse(e.data);
+        if (this.stages[d.stage]) this.stages[d.stage].state = 'running';
+      });
+      es.addEventListener('stage_done', e => {
+        const d = JSON.parse(e.data);
+        if (this.stages[d.stage]) this.stages[d.stage].state = 'done';
+      });
+      es.addEventListener('stage_skipped', e => {
+        const d = JSON.parse(e.data);
+        if (this.stages[d.stage]) this.stages[d.stage].state = 'skipped';
+      });
+      es.addEventListener('resume_summary', e => {
+        const d = JSON.parse(e.data);
+        if (this.stages.retrieval) {
+          this.stages.retrieval.resumed   = d.completed;
+          this.stages.retrieval.remaining = d.remaining;
+        }
+      });
+      es.addEventListener('run_finished', e => {
+        const d = JSON.parse(e.data);
+        this._push(`=== run_finished: ${d.status} ===`);
+        if (d.status !== 'done') {
+          for (const k of this.stageOrder) {
+            if (this.stages[k].state === 'running') this.stages[k].state = 'failed';
+          }
+        }
+        setTimeout(()=>location.reload(), 1500);
+      });
+      es.addEventListener('abort_requested', e => this._push(`[abort_requested]`));
+      es.addEventListener('done', e => {
+        this._push(`=== stream done ===`);
+        es.close();
+      });
+      es.addEventListener('stream_closed', e => es.close());
+    },
+
+    // Parse `=== STAGE started/finished ===` and `=== SKIP stage ===` markers
+    // out of replayed log lines so finished runs render the stepper correctly
+    // even when no live SSE events arrive.
+    _stageFromLog(line){
+      const skip = line.match(/^=== SKIP (\w+)/);
+      if (skip) {
+        const stage = skip[1].toLowerCase();
+        if (this.stages[stage]) this.stages[stage].state = 'skipped';
+        return;
+      }
+      const m = line.match(/^=== (\w+) (started|finished|FAILED)/);
+      if (!m) return;
+      const stage  = m[1].toLowerCase();
+      const action = m[2].toLowerCase();
+      if (!this.stages[stage]) return;
+      if      (action === 'started')  this.stages[stage].state = 'running';
+      else if (action === 'finished') this.stages[stage].state = 'done';
+      else if (action === 'failed')   this.stages[stage].state = 'failed';
+    },
+
+    _push(text){
+      if (this.paused) return;
+      this.lines.push({ id: ++this._id, text });
+      if (this.lines.length > 500) this.lines.splice(0, this.lines.length - 500);
+      if (this.autoScroll) this.$nextTick(()=>{
+        const p = this.$refs.logPane;
+        if (p) p.scrollTop = p.scrollHeight;
+      });
+    },
+
+    // Stepper presentation helpers
+    nodeClass(key){
+      const s = this.stages[key]?.state;
+      return {
+        'bg-emerald-500 text-white':              s === 'done',
+        'bg-amber-500 text-white animate-pulse':  s === 'running',
+        'bg-slate-200 text-slate-500':            s === 'pending',
+        'bg-slate-100 text-slate-400':            s === 'skipped',
+        'bg-rose-500 text-white':                 s === 'failed',
+      };
+    },
+    nodeIcon(key){
+      return ({ done: '✓', running: '⟳', pending: '○', skipped: '⊘', failed: '✕' })[this.stages[key]?.state] || '?';
+    },
+    lineClass(prevKey){
+      const s = this.stages[prevKey]?.state;
+      return (s === 'done' || s === 'skipped') ? 'bg-emerald-400' : 'bg-slate-200';
+    },
+    subText(key){
+      const s = this.stages[key];
+      if (!s) return '';
+      if (s.state === 'skipped') return 'skipped';
+      if (s.state === 'running') {
+        if (s.current && s.total) return `${s.current}/${s.total}`;
+        if (s.resumed)            return `+${s.resumed} resumed`;
+        return 'running…';
+      }
+      if (s.state === 'done')    return 'done';
+      if (s.state === 'failed')  return 'failed';
+      return '';
+    },
+    active(){
+      // Running stage takes precedence; otherwise the next pending; otherwise null.
+      for (const k of this.stageOrder) {
+        if (this.stages[k]?.state === 'running') {
+          return { key: k, tag: '— running', description: STAGE_DESCRIPTIONS[k] };
+        }
+      }
+      for (const k of this.stageOrder) {
+        if (this.stages[k]?.state === 'pending') {
+          return { key: k, tag: '— pending', description: STAGE_DESCRIPTIONS[k] };
+        }
+      }
+      return null;
+    },
+  }
+}
+</script>
+
+{% endblock %}

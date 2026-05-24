@@ -7,12 +7,6 @@ __pycache__/
 venv/
 .pytest_cache/
 
-# Data (Git LFS will handle large binaries — listed here so accidental
-# raw checkouts do not bloat the index)
-data/eval/citation_graph.pkl
-data/eval/eval_queries.jsonl
-data/eval/facts_index.jsonl
-
 # Build artefacts
 build/
 *.log
@@ -33,6 +27,14 @@ build/
 *.run.xml
 *.synctex.gz
 *.toc
+
+# Heavy pipeline outputs available via the v1.0-thesis-data release
+data/eval/results/*_pool.jsonl
+data/eval/results/cross_encoder_scores.jsonl
+data/eval/results/query_embeddings.jsonl
+data/eval/decision_metadata.json
+data/eval/metrics/_pre_directed_run90/
+data/eval/stage2_laptop.log
 
 # Editor / OS
 .vscode/

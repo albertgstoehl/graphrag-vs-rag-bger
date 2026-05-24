@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="flex items-baseline gap-4 mb-2 flex-wrap">
+  <h1 class="text-2xl font-semibold">Ranked Metrics Heatmap</h1>
+  <span class="text-sm text-slate-500">{{ rows|length }} configs · system × (ranking, k)</span>
+</div>
+<p class="text-sm text-slate-500 mb-4">
+  One row per system, one column per (ranking, k). Cell color and value
+  encode the chosen metric; the palette normalises to the matrix's own
+  max so the relative ranking is always legible. Pool stages aren't
+  shown here — they live on the
+  <a href="/metrics/recall-ceiling" class="text-slate-900 underline">Pipeline Matrix</a>.
+  Click any cell to drill into per-query rows for that (system, ranking, k).
+</p>
+
+{% if not rows %}
+<div class="bg-white border border-slate-200 rounded p-6 text-center text-slate-500">
+  No metrics yet. <a href="/runs/new" class="text-slate-900 underline">Run the pipeline</a> first.
+</div>
+{% else %}
+
+<div x-data='metricsHeatmap({{ rows|tojson }}, {{ rows_by_lang|tojson }})'>
+
+  <div class="flex flex-wrap gap-3 items-end mb-3">
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Metric</label>
+      <select x-model="metric"
+              class="border border-slate-300 rounded px-2 py-1 text-sm">
+        <option value="mean_recall">Recall@k</option>
+        <option value="mean_precision">Precision@k</option>
+        <option value="mean_mrr">MRR</option>
+        <option value="mean_ndcg">nDCG@k</option>
+        <option value="mean_nearness_score">Graph-Nearness (gerichtet)</option>
+        <option value="mean_nearness_score_undirected">Graph-Nearness (ungerichtet)</option>
+        <option value="hit_rate">HitRate@k</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Language</label>
+      <select x-model="language"
+              class="border border-slate-300 rounded px-2 py-1 text-sm">
+        <option value="all">All</option>
+        <option value="de">de</option>
+        <option value="fr">fr</option>
+        <option value="it">it</option>
+      </select>
+    </div>
+    <div class="text-xs text-slate-500 ml-auto">
+      Palette scales 0&nbsp;→ <span x-text="(maxVal()*100).toFixed(2) + '%'"></span>
+      (max across the matrix for the selected metric).
+    </div>
+  </div>
+
+  <div class="md:hidden text-xs text-slate-500 mb-1">← swipe the matrix →</div>
+  <div class="bg-white rounded border border-slate-200 overflow-x-auto scroll-hint">
+    <table class="w-full text-sm border-collapse">
+      <thead class="bg-slate-100 text-slate-600 sticky top-0">
+        <tr>
+          <th class="text-left px-3 py-2 sticky left-0 bg-slate-100 z-10">System</th>
+          <template x-for="col in columns" :key="col.ranking + '_' + col.k">
+            <th class="text-right px-2 py-2 whitespace-nowrap"
+                :title="col.ranking + ' @ k=' + col.k">
+              <span x-text="shortRank[col.ranking] + '@' + col.k"></span>
+            </th>
+          </template>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="sys in systems" :key="sys">
+          <tr class="border-t border-slate-100">
+            <td class="px-3 py-2 font-mono sticky left-0 bg-white" x-text="sys"></td>
+            <template x-for="col in columns" :key="col.ranking + '_' + col.k">
+              <td class="text-right px-2 py-2 cursor-pointer transition-colors hover:ring-2 hover:ring-slate-400"
+                  :style="cellStyle(sys, col.ranking, col.k)"
+                  :title="cellTitle(sys, col.ranking, col.k)"
+                  @click="$dispatch('drilldown-open', {system: sys, ranking: col.ranking, k: Number(col.k), metric: drilldownMetric(), language: language})">
+                <div class="tabular-nums" x-text="cellLabel(sys, col.ranking, col.k)"></div>
+              </td>
+            </template>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="text-xs text-slate-400 mt-3">
+    Cells normalised per-metric to <code>[0, max]</code>; deeper emerald = higher
+    on the active metric. Hover a cell for all six metrics at that (system, ranking, k).
+  </p>
+</div>
+
+<div x-data="perQueryPanel({homeSystem: 'graph_1hop', urlParam: 'row'})"
+     x-init="setup()"
+     @drilldown-open.window="openRanked($event.detail)"
+     @drilldown-cell.window="openFromString($event.detail.cell)">
+  {% include "_per_query_panel.html" %}
+</div>
+
+<script>
+function metricsHeatmap(rawRows, rawByLang) {
+  // Parse summary.csv-shaped rows. `rawRows` is aggregated across all
+  // queries (language='all' by convention here); `rawByLang` is the
+  // per-language breakdown from summary_by_language.csv. We merge both
+  // into a single keyed lookup `${system}|${ranking}|${k}|${language}`
+  // so the language filter is a O(1) re-key, not a refilter+regroup.
+  const parseRow = (r, fallbackLang) => ({
+    system: r.system,
+    ranking: r.ranking,
+    k: Number(r.k),
+    language:                  r.language || fallbackLang,
+    mean_recall:               Number(r.mean_recall),
+    mean_precision:            Number(r.mean_precision),
+    mean_mrr:                  Number(r.mean_mrr),
+    mean_ndcg:                 Number(r.mean_ndcg),
+    mean_nearness_score:       Number(r.mean_nearness_score),
+    mean_nearness_score_undirected: Number(r.mean_nearness_score_undirected || 0),
+    hit_rate:                  Number(r.hit_rate),
+  });
+  const rowsAll = (rawRows || []).map(r => parseRow(r, 'all'));
+  const rowsByLang = (rawByLang || []).map(r => parseRow(r, r.language || '?'));
+  const rows = rowsAll.concat(rowsByLang);
+  const cells = new Map();
+  for (const r of rows) {
+    cells.set(`${r.system}|${r.ranking}|${r.k}|${r.language}`, r);
+  }
+
+  // Derive ordered axes from the data; preserve canonical order where possible.
+  const canonicalSystems = ['rag', 'rag_smart', 'emb_1hop', 'emb_2hop', 'graph_1hop', 'graph_2hop'];
+  const seenSys = new Set(rows.map(r => r.system));
+  const systems = [
+    ...canonicalSystems.filter(s => seenSys.has(s)),
+    ...[...seenSys].filter(s => !canonicalSystems.includes(s)).sort(),
+  ];
+  const rankings = ['cosine', 'cross_encoder', 'indegree']
+    .filter(r => rows.some(x => x.ranking === r));
+  const kValues = [...new Set(rows.map(r => r.k))].sort((a,b)=>a-b);
+  // Flatten (ranking, k) into a single column list so the table can iterate
+  // it with a single <template x-for>. Nested x-for in Alpine renders
+  // siblings in reverse-insertion order, which would otherwise put the
+  // last ranking on the left.
+  const columns = [];
+  for (const r of rankings) for (const k of kValues) columns.push({ranking: r, k});
+
+  return {
+    rows, cells, systems, rankings, kValues, columns,
+    shortRank: {cosine: 'cos', cross_encoder: 'CE', indegree: 'ind'},
+    metric: 'mean_recall',
+    language: 'all',
+
+    /** Map summary.csv field name → drilldown panel metric key. */
+    drilldownMetric() {
+      const map = {
+        mean_recall: 'recall',
+        mean_precision: 'precision',
+        mean_mrr: 'mrr',
+        mean_ndcg: 'ndcg',
+        mean_nearness_score: 'nearness_score',
+        mean_nearness_score_undirected: 'nearness_score_undirected',
+        // hit_rate isn't in per_query files — fall back to recall in the drilldown.
+        hit_rate: 'recall',
+      };
+      return map[this.metric] || 'recall';
+    },
+
+    cell(sys, ranking, k) {
+      return this.cells.get(`${sys}|${ranking}|${k}|${this.language}`) || null;
+    },
+    cellValue(sys, ranking, k) {
+      const c = this.cell(sys, ranking, k);
+      return c ? c[this.metric] : null;
+    },
+    /** Max of the selected metric across the visible matrix — used as the
+        palette ceiling so any metric fills the green scale, regardless of
+        absolute magnitude. P@k caps at ~0.02; Recall caps at ~0.35. */
+    maxVal() {
+      let mx = 0;
+      for (const r of this.rows) {
+        if (r.language !== this.language) continue;
+        const v = r[this.metric];
+        if (typeof v === 'number' && v > mx) mx = v;
+      }
+      return mx > 0 ? mx : 1;
+    },
+    cellLabel(sys, ranking, k) {
+      const v = this.cellValue(sys, ranking, k);
+      if (v == null || Number.isNaN(v)) return '–';
+      // 4 fractional digits is enough to disambiguate P@k values that
+      // sit at 0.0001 — otherwise they all collapse to "0.00".
+      return v.toFixed(4);
+    },
+    cellStyle(sys, ranking, k) {
+      const v = this.cellValue(sys, ranking, k);
+      if (v == null || Number.isNaN(v)) return '';
+      const t = Math.min(1, v / this.maxVal());
+      const r = Math.round(255 - t * (255 - 5));
+      const g = Math.round(255 - t * (255 - 122));
+      const b = Math.round(255 - t * (255 - 85));
+      const fg = t > 0.55 ? '#ffffff' : '#0f172a';
+      return `background-color: rgb(${r},${g},${b}); color: ${fg}`;
+    },
+    /** Multi-line title attribute (browser tooltip) for hover — gives
+        a quick read on all seven metrics without needing to flip the
+        selector. Not localised; raw labels match the column dropdown. */
+    cellTitle(sys, ranking, k) {
+      const c = this.cell(sys, ranking, k);
+      if (!c) return `${sys} · ${ranking} @ k=${k} · ${this.language}: no data`;
+      const fmt = v => (typeof v === 'number' ? v.toFixed(4) : '–');
+      return [
+        `${sys} · ${ranking} @ k=${k} · ${this.language}`,
+        `Recall@k:        ${fmt(c.mean_recall)}`,
+        `Precision@k:     ${fmt(c.mean_precision)}`,
+        `MRR:             ${fmt(c.mean_mrr)}`,
+        `nDCG@k:          ${fmt(c.mean_ndcg)}`,
+        `Nearness (gerichtet):   ${fmt(c.mean_nearness_score)}`,
+        `Nearness (ungerichtet): ${fmt(c.mean_nearness_score_undirected)}`,
+        `HitRate@k:       ${fmt(c.hit_rate)}`,
+      ].join('\n');
+    },
+  };
+}
+</script>
+
+{% endif %}
+{% endblock %}

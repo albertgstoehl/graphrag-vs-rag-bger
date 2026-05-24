@@ -1,0 +1,174 @@
+{# Shared drilldown panel embedded under each aggregate metrics view.
+
+Hosted directly inside an x-data="perQueryPanel({...})" scope:
+  - /metrics/recall-ceiling  →  inside the matrix's existing cell-click panel
+  - /metrics                 →  below the flat per-config table
+  - /metrics/graph-nearness  →  below the bar chart
+
+The host scope listens for @drilldown-open.window and @drilldown-cell.window
+to receive opens from sibling x-data scopes (matrix table, flat table,
+nearness chart) and forwards them to openRanked / openFromString.
+
+Perf note: the row list is virtualised — the scroll container drives
+visibleRows()/visibleRange() in per_query_panel.js so only ~30 of the 3000
+rows are actually in the DOM at any moment. Two spacer rows (padTop /
+padBottom) keep the scrollbar consistent with the full virtual height.
+#}
+<div x-show="open"
+     x-transition.opacity
+     class="bg-white border border-slate-200 rounded mt-4 p-3 sm:p-4">
+
+  <div class="flex items-baseline gap-3 mb-3 flex-wrap">
+    <span class="text-sm text-slate-500">Per-query drilldown</span>
+    <span class="font-semibold text-slate-900" x-text="title()"></span>
+    <span class="ml-auto text-xs text-slate-400 cursor-pointer hover:text-slate-700"
+          @click="close()">close ✕</span>
+  </div>
+
+  <div class="flex flex-wrap gap-3 items-end mb-3">
+    <template x-if="mode === 'ranked' && metricLocked !== true">
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">Metric</label>
+        <select :value="metric"
+                @change="setMetric($event.target.value)"
+                class="border border-slate-300 rounded px-2 py-1 text-sm">
+          <option value="recall">Recall@k</option>
+          <option value="precision">Precision@k</option>
+          <option value="mrr">MRR</option>
+          <option value="ndcg">nDCG@k</option>
+          <option value="nearness_score">Nearness (gerichtet)</option>
+          <option value="nearness_score_undirected">Nearness (ungerichtet)</option>
+        </select>
+      </div>
+    </template>
+    <template x-if="mode === 'pool'">
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">Pool metric</label>
+        <select :value="metricForMode()"
+                @change="setMetric($event.target.value)"
+                class="border border-slate-300 rounded px-2 py-1 text-sm">
+          <option value="recall">Pool-Recall</option>
+          <option value="precision">Pool-Precision</option>
+        </select>
+      </div>
+    </template>
+    <div x-show="mode === 'ranked'">
+      <label class="block text-xs text-slate-500 mb-1">Ranking</label>
+      <select :value="ranking"
+              @change="setRanking($event.target.value)"
+              class="border border-slate-300 rounded px-2 py-1 text-sm">
+        <option value="cosine">cosine</option>
+        <option value="cross_encoder">cross_encoder</option>
+        <option value="indegree">indegree</option>
+      </select>
+    </div>
+    <div x-show="mode === 'ranked'">
+      <label class="block text-xs text-slate-500 mb-1">k</label>
+      <select :value="k"
+              @change="setK(Number($event.target.value))"
+              class="border border-slate-300 rounded px-2 py-1 text-sm">
+        <option value="5">5</option>
+        <option value="10">10</option>
+        <option value="15">15</option>
+        <option value="20">20</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Language</label>
+      <select :value="language"
+              @change="setLanguage($event.target.value)"
+              class="border border-slate-300 rounded px-2 py-1 text-sm">
+        <option value="all">All</option>
+        <option value="de">de</option>
+        <option value="fr">fr</option>
+        <option value="it">it</option>
+      </select>
+    </div>
+    <span class="text-xs text-slate-500" x-text="statusLine()"></span>
+  </div>
+
+  <template x-if="loading">
+    <div class="text-sm text-slate-500 italic py-6">Loading…</div>
+  </template>
+
+  <template x-if="!loading && rows.length === 0 && open">
+    <div class="text-sm text-slate-500 italic py-6">
+      No per-query data available for this configuration yet — Stage 3 may still be running.
+    </div>
+  </template>
+
+  <template x-if="!loading && rows.length > 0">
+    <div>
+      <input type="search"
+             placeholder="filter by query_id, language, year…"
+             x-model="filter"
+             @input="onFilterInput()"
+             class="w-full border border-slate-200 rounded px-3 py-1.5 text-sm mb-2 focus:outline-none">
+      <div class="overflow-auto scroll-hint border border-slate-100 rounded"
+           x-init="initScroller($el)"
+           @scroll.passive="onScroll($event)">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-100 text-slate-600 sticky top-0 z-10">
+            <tr>
+              <th class="text-left px-3 py-2 cursor-pointer select-none"
+                  @click="sort('query_id')">
+                query<span x-text="sortIndicator('query_id')"></span>
+              </th>
+              <th class="text-left px-3 py-2 cursor-pointer select-none"
+                  @click="sort('language')">
+                lang<span x-text="sortIndicator('language')"></span>
+              </th>
+              <th class="text-left px-3 py-2 cursor-pointer select-none"
+                  @click="sort('year')">
+                year<span x-text="sortIndicator('year')"></span>
+              </th>
+              <th class="text-right px-3 py-2 cursor-pointer select-none"
+                  @click="sort('n_gt')">
+                |GT|<span x-text="sortIndicator('n_gt')"></span>
+              </th>
+              <template x-for="s in systems" :key="s">
+                <th class="text-right px-3 py-2 cursor-pointer select-none"
+                    :class="s === system ? 'bg-amber-100 text-slate-900' : ''"
+                    @click="sort('row.' + s)">
+                  <span x-text="s"></span>
+                  <span x-text="sortIndicator('row.' + s)"></span>
+                </th>
+              </template>
+              <th class="text-right px-3 py-2 cursor-pointer select-none bg-slate-200"
+                  @click="sort('delta')">
+                Δ&nbsp;(g1h−e1h)<span x-text="sortIndicator('delta')"></span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {# Top spacer: pushes visible rows down to their virtual offset. #}
+            <tr aria-hidden="true" :style="`height: ${visibleRange().padTop}px`"><td></td></tr>
+            <template x-for="r in visibleRows()" :key="r.query_id">
+              <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+                  @click="openDetail(r.query_id)">
+                <td class="px-3 py-2 font-mono text-xs">
+                  <span x-text="r.query_id.slice(0, 13) + '…'"></span>
+                </td>
+                <td class="px-3 py-2" x-text="r.language"></td>
+                <td class="px-3 py-2" x-text="r.year"></td>
+                <td class="px-3 py-2 text-right" x-text="r.n_gt"></td>
+                <template x-for="s in systems" :key="s">
+                  <td class="px-3 py-2 text-right tabular-nums"
+                      :class="[cellShade(cellValue(r, s)),
+                               s === system ? 'ring-1 ring-amber-300' : '']"
+                      x-text="fmt(cellValue(r, s))"></td>
+                </template>
+                <td class="px-3 py-2 text-right tabular-nums font-semibold"
+                    :class="deltaShade(r.delta)"
+                    x-text="fmtSigned(r.delta)"></td>
+              </tr>
+            </template>
+            {# Bottom spacer: keeps the total scrollbar length in sync with
+               the full virtual list. #}
+            <tr aria-hidden="true" :style="`height: ${visibleRange().padBottom}px`"><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </template>
+</div>

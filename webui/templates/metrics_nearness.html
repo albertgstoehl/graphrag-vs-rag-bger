@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1 class="text-2xl font-semibold mb-2">Graph-Nearness</h1>
+<p class="text-sm text-slate-500 mb-6">
+  Mean 1/(1+distance) of retrieved docs to nearest ground-truth node in the citation graph.
+  Wähle Ranking und Variante über die Selektoren unten.
+</p>
+
+{% if not rows %}
+<div class="bg-white border border-slate-200 rounded p-6 text-center text-slate-500">
+  No metrics data yet.
+</div>
+{% else %}
+
+<div x-data='nearnessChart({{ rows|tojson }})' x-init="render()">
+  <div class="flex flex-wrap gap-3 items-end mb-3">
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Ranking</label>
+      <select x-model="ranking"
+              @change="render()"
+              class="border border-slate-300 rounded px-2 py-1 text-sm">
+        <option value="cross_encoder">cross_encoder</option>
+        <option value="cosine">cosine</option>
+        <option value="indegree">indegree</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Variante</label>
+      <select x-model="variant"
+              @change="render()"
+              class="border border-slate-300 rounded px-2 py-1 text-sm">
+        <option value="nearness_score">gerichtet (citing → cited)</option>
+        <option value="nearness_score_undirected">ungerichtet (legacy)</option>
+      </select>
+    </div>
+    <p class="text-xs text-slate-500 ml-auto max-w-md">
+      Gerichtet misst, wie viele Vorwärts-Citation-Hops ein Treffer braucht, um den GT-Knoten zu erreichen.
+      Ungerichtet zählt Hops in beide Richtungen (legacy).
+    </p>
+  </div>
+
+  <section class="bg-white border border-slate-200 rounded p-4">
+    <div style="height: 400px;"><canvas id="chart-nearness"></canvas></div>
+    <p class="text-xs text-slate-500 mt-2">
+      Klick auf einen Balken öffnet den Per-Query-Drilldown für die gewählte (system, k)-Zelle unter dem aktuellen Ranking.
+    </p>
+  </section>
+</div>
+
+<div x-data="perQueryPanel({homeSystem: 'graph_1hop', urlParam: 'bar', metricLocked: true, defaultMetric: 'nearness_score'})"
+     x-init="setup()"
+     @drilldown-open.window="openRanked($event.detail)"
+     @drilldown-cell.window="openFromString($event.detail.cell)">
+  {% include "_per_query_panel.html" %}
+</div>
+
+<script>
+function nearnessChart(rows) {
+  const palette = {
+    rag:        '#64748b',
+    rag_smart:  '#475569',
+    emb_1hop:   '#2563eb',
+    emb_2hop:   '#1d4ed8',
+    graph_1hop: '#059669',
+    graph_2hop: '#047857',
+  };
+  const ks = [...new Set(rows.map(r => Number(r.k)))].sort((a,b)=>a-b);
+  const systems = [...new Set(rows.map(r => r.system))];
+
+  return {
+    ranking: 'cross_encoder',
+    variant: 'nearness_score',
+    chart: null,
+
+    fieldName() {
+      return this.variant === 'nearness_score_undirected'
+        ? 'mean_nearness_score_undirected'
+        : 'mean_nearness_score';
+    },
+
+    render() {
+      const field = this.fieldName();
+      const rk = this.ranking;
+      const filtered = rows.filter(r => r.ranking === rk);
+      const datasets = systems.map(sys => ({
+        label: sys,
+        data: ks.map(k => {
+          const r = filtered.find(x => x.system===sys && String(x.k)===String(k));
+          return r ? Number(r[field]) : null;
+        }),
+        backgroundColor: palette[sys] || '#64748b',
+      }));
+      if (this.chart) {
+        this.chart.destroy();
+        this.chart = null;
+      }
+      const drilldownMetric = () => this.variant;
+      const drilldownRanking = () => this.ranking;
+      this.chart = new Chart(document.getElementById('chart-nearness'), {
+        type: 'bar',
+        data: { labels: ks.map(k=>'k='+k), datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true,
+                         title: {display: true, text: 'Mean Graph-Nearness'} } },
+          onClick: (_evt, elements, chart) => {
+            if (!elements || !elements.length) return;
+            const el = elements[0];
+            const sys = chart.data.datasets[el.datasetIndex].label;
+            const k = ks[el.index];
+            window.dispatchEvent(new CustomEvent('drilldown-open', {
+              detail: {system: sys, ranking: drilldownRanking(),
+                       k: Number(k), metric: drilldownMetric()},
+            }));
+          },
+        }
+      });
+    },
+  };
+}
+</script>
+
+{% endif %}
+{% endblock %}

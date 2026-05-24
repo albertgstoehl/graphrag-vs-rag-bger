@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1 class="text-xl font-semibold mb-4">New Run</h1>
+
+<form method="post" action="/runs"
+      class="bg-white rounded shadow-sm border border-slate-200 p-5 space-y-5 max-w-3xl">
+
+  <section>
+    <h2 class="font-semibold text-sm mb-2">Systems</h2>
+    <div class="grid grid-cols-2 gap-1 text-sm">
+      {% for s, label in [
+        ('rag',        'RAG (top-60)'),
+        ('emb_1hop',   'Emb 1-hop (cap 400)'),
+        ('emb_2hop',   'Emb 2-hop (cap 800)'),
+        ('graph_1hop', 'Graph 1-hop (cap 400)'),
+        ('graph_2hop', 'Graph 2-hop (cap 800)'),
+      ] %}
+      <label class="flex items-center gap-2">
+        <input type="checkbox" name="systems" value="{{ s }}" checked>
+        <span>{{ label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section>
+    <h2 class="font-semibold text-sm mb-2">Skip stages</h2>
+    <div class="flex gap-5 text-sm">
+      <label class="flex items-center gap-2">
+        <input type="checkbox" name="skip_sample" checked> Sample
+      </label>
+      <label class="flex items-center gap-2">
+        <input type="checkbox" name="skip_retrieval"> Retrieval
+      </label>
+      <label class="flex items-center gap-2">
+        <input type="checkbox" name="skip_metrics"> Metrics
+      </label>
+    </div>
+  </section>
+
+  <section x-data="{
+            current: {{ qstats.max_stratified }},
+            poolMax: {{ qstats.pool_max_stratified }},
+            value: 201,
+            get needsResample() { return this.value > this.current; },
+            get perLang() { return Math.floor(this.value / 3); },
+            get etaHours() { return (this.value * 18 / 3600).toFixed(1); },
+          }">
+    <h2 class="font-semibold text-sm mb-2">Queries</h2>
+    {% set per = qstats.per_lang %}
+    {% set pool = qstats.pool %}
+    {% set full = qstats.max_stratified %}
+    <div class="text-xs text-slate-500 mb-2">
+      File: <strong>{{ full }}</strong>
+      ({{ per.get('de', 0) }}/{{ per.get('fr', 0) }}/{{ per.get('it', 0) }})
+      · Pool: <strong>{{ '{:,}'.format(qstats.pool_max_stratified) }}</strong>
+      (it={{ '{:,}'.format(pool['it']) }} caps)
+      · ×3
+      {% if qstats.all_verified %}
+        · <span class="text-emerald-700">✓ verified</span>
+      {% elif not qstats.missing %}
+        · <span class="text-amber-700">⚠ {{ qstats.verified }}/{{ qstats.total }} verified</span>
+      {% endif %}
+    </div>
+    <div class="flex items-center gap-3 text-sm">
+      <input type="number" name="query_limit"
+             min="0" :max="poolMax" step="3" x-model.number="value"
+             class="border rounded px-2 py-1 w-28">
+      <span class="text-xs text-slate-500">0 = full ({{ full }})</span>
+    </div>
+
+    <p class="mt-2 text-xs text-slate-600"
+       x-show="!needsResample && value > 0" x-cloak>
+      First <strong x-text="value"></strong> of {{ full }}
+      (<span x-text="perLang"></span>/lang) ·
+      ETA ≈ <span x-text="etaHours"></span> h
+    </p>
+    <div class="mt-2 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900"
+         x-show="needsResample" x-cloak>
+      <p class="font-semibold mb-1">
+        ⚠ Re-sample {{ full }} → <span x-text="value"></span>
+        (<span x-text="perLang"></span>/lang)
+      </p>
+      <ul class="list-disc pl-4 space-y-0.5">
+        <li>File replaced (deterministic superset — old queries stay).</li>
+        <li>Stage 1 runs first; <em>Skip sampling</em> overridden.</li>
+        <li>Past results stay comparable (keyed by <code>query_id</code>).</li>
+        <li>Hard ceiling {{ '{:,}'.format(qstats.pool_max_stratified) }}
+            (it pool {{ '{:,}'.format(pool['it']) }}).</li>
+      </ul>
+      <p class="mt-1">ETA ≈ <span x-text="etaHours"></span> h + Stage 1.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="flex flex-wrap gap-5 text-sm">
+      <label class="flex items-center gap-2"
+             title="Skip queries that already have complete output coverage on disk. Lets you continue an interrupted run instead of restarting from scratch.">
+        <input type="checkbox" name="resume" checked>
+        Resume completed queries
+      </label>
+      <label class="flex items-center gap-2">
+        <input type="checkbox" name="dry_run">
+        Dry run (2 queries, smoke test)
+      </label>
+    </div>
+  </section>
+
+  <div class="flex items-center gap-3 border-t pt-3">
+    <button type="submit"
+            class="bg-slate-900 text-white px-4 py-1.5 rounded hover:bg-slate-700 text-sm">
+      Start
+    </button>
+    <a href="/" class="text-slate-500 hover:underline text-xs">Cancel</a>
+  </div>
+</form>
+
+{% endblock %}

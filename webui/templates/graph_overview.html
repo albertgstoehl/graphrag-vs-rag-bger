@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1 class="text-2xl font-semibold mb-2">Knowledge Graph</h1>
+<p class="text-sm text-slate-500 mb-6">
+  Citation-Graph aus dem Bundesgericht-Korpus (data/eval/citation_graph.pkl).
+  Kanten zeigen von zitierendem zu zitiertem Dokument, also citing → cited.
+</p>
+
+<section class="bg-white border border-slate-200 rounded p-4 mb-6"
+         x-data="graphView()" x-init="$nextTick(() => load())">
+  <div class="flex flex-wrap gap-3 items-end mb-3">
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Modus</label>
+      <select x-model="mode" @change="load()"
+              class="border border-slate-300 rounded px-2 py-1 text-sm">
+        <option value="top">Top-zitierte Knoten</option>
+        <option value="seed">Fokus auf decision_id</option>
+      </select>
+    </div>
+    <template x-if="mode === 'top'">
+      <div class="flex gap-3 items-end">
+        <div>
+          <label class="block text-xs text-slate-500 mb-1">Top-N</label>
+          <select x-model.number="topN" @change="load()"
+                  class="border border-slate-300 rounded px-2 py-1 text-sm">
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="30">30</option>
+            <option value="50">50</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-500 mb-1">Citer pro Seed</label>
+          <select x-model.number="citersPerSeed" @change="load()"
+                  class="border border-slate-300 rounded px-2 py-1 text-sm">
+            <option value="0">0</option>
+            <option value="3">3</option>
+            <option value="5">5</option>
+            <option value="10">10</option>
+          </select>
+        </div>
+      </div>
+    </template>
+    <template x-if="mode === 'seed'">
+      <div class="flex gap-2 items-end flex-grow">
+        <div class="flex-grow max-w-md">
+          <label class="block text-xs text-slate-500 mb-1">decision_id (UUID)</label>
+          <input type="text" x-model="seed" @keydown.enter="load()"
+                 placeholder="z.B. 75488867-1234-…"
+                 class="w-full border border-slate-300 rounded px-2 py-1 text-sm font-mono">
+        </div>
+        <button @click="load()"
+                class="border border-slate-300 rounded px-3 py-1 text-sm bg-slate-100 hover:bg-slate-200">
+          laden
+        </button>
+      </div>
+    </template>
+    <span class="text-xs text-slate-500 ml-auto" x-text="metaLine"></span>
+  </div>
+
+  <div id="cy-graph" style="height: 520px;" class="border border-slate-200 rounded bg-slate-50"></div>
+
+  <div class="bg-white rounded border border-slate-200 p-3 text-xs mt-3"
+       x-show="tooltip" x-cloak>
+    <div class="flex items-baseline gap-2 mb-1 flex-wrap">
+      <span class="font-mono text-slate-700 font-semibold" x-text="tooltip?.label"></span>
+      <span class="font-mono text-slate-400 text-[11px]"
+            x-text="tooltip?.id?.slice(0, 13) + '…'"></span>
+      <span class="ml-auto flex gap-3">
+        <a x-show="tooltip?.source_link"
+           :href="tooltip?.source_link?.url"
+           target="_blank" rel="noopener"
+           class="text-sky-700 hover:underline"
+           title="Open the decision / law on its official site">
+           ↗ <span x-text="tooltip?.source_link?.host"></span>
+        </a>
+        <a x-show="tooltip?.hf_url" :href="tooltip?.hf_url"
+           target="_blank" rel="noopener"
+           class="text-sky-700 hover:underline"
+           title="HF Data Studio SQL filter on this decision_id">↗ HF source</a>
+        <a :href="`/inspector/${tooltip?.id}`"
+           class="text-slate-700 hover:underline">↗ Inspector</a>
+      </span>
+    </div>
+    <div class="grid grid-cols-2 gap-x-3 gap-y-0.5 mb-2">
+      <div>source</div><div x-text="tooltip?.source ?? '–'"></div>
+      <div>indegree</div><div x-text="tooltip?.indegree ?? '–'"></div>
+      <div>outdegree</div><div x-text="tooltip?.outdegree ?? '–'"></div>
+      <div>file_number</div><div x-text="tooltip?.file_number ?? '–'"></div>
+      <div>language</div><div x-text="tooltip?.language ?? '–'"></div>
+      <div>date (ms)</div><div class="font-mono text-[11px]" x-text="tooltip?.date ?? '–'"></div>
+      <div>court</div><div x-text="tooltip?.court ?? '–'"></div>
+      <div>qdrant source</div><div class="font-mono text-[11px]"
+                                   x-text="tooltip?.qdrant_source ?? '–'"></div>
+    </div>
+    <div class="text-slate-700 whitespace-pre-line"
+         x-text="tooltip?.text_excerpt"></div>
+    <div class="mt-2">
+      <button @click="seed = tooltip.id; mode = 'seed'; load()"
+              class="text-slate-700 underline hover:text-slate-900">Fokus auf diesen Knoten</button>
+    </div>
+  </div>
+
+  <p class="text-xs text-slate-500 mt-3">
+    Pfeile zeigen von zitierendem zu zitiertem Dokument.
+    Im Top-Modus sind die N meistzitierten Rulings als grosse Knoten gezeichnet, mit ihren wichtigsten Citern.
+    Im Fokus-Modus werden für eine gewählte decision_id alle direkten Citer und Citees angezeigt.
+    Klick auf einen Knoten zeigt Details und erlaubt den Fokus zu wechseln.
+  </p>
+</section>
+
+<section class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+  <div class="bg-white border border-slate-200 rounded p-3">
+    <div class="text-xs text-slate-500">Knoten</div>
+    <div class="text-xl font-semibold tabular-nums">{{ "{:,}".format(stats.n_nodes).replace(",", "'") }}</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded p-3">
+    <div class="text-xs text-slate-500">Kanten</div>
+    <div class="text-xl font-semibold tabular-nums">{{ "{:,}".format(stats.n_edges).replace(",", "'") }}</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded p-3">
+    <div class="text-xs text-slate-500">Mean In-Degree</div>
+    <div class="text-xl font-semibold tabular-nums">{{ "%.2f"|format(stats.in_mean) }}</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded p-3">
+    <div class="text-xs text-slate-500">Mean Out-Degree</div>
+    <div class="text-xl font-semibold tabular-nums">{{ "%.2f"|format(stats.out_mean) }}</div>
+  </div>
+</section>
+
+<script src="/static/vendor/cytoscape.min.js"></script>
+<script src="/static/vendor/layout-base.js"></script>
+<script src="/static/vendor/cose-base.js"></script>
+<script src="/static/vendor/cytoscape-cose-bilkent.js"></script>
+<script>
+function graphView() {
+  const palette = {
+    ruling: '#0f766e',
+    law:    '#b45309',
+    unknown:'#64748b',
+  };
+  return {
+    mode: 'top',
+    topN: 20,
+    citersPerSeed: 5,
+    seed: '',
+    metaLine: '',
+    tooltip: null,
+    cy: null,
+
+    async load() {
+      let url;
+      if (this.mode === 'seed') {
+        const s = (this.seed || '').trim();
+        if (!s) { this.metaLine = 'decision_id eingeben'; return; }
+        url = `/api/graph-overview/subgraph?seed=${encodeURIComponent(s)}`;
+      } else {
+        url = `/api/graph-overview/subgraph?top_n=${this.topN}&citers_per_seed=${this.citersPerSeed}`;
+      }
+      this.metaLine = 'lade…';
+      this.tooltip = null;
+      let r;
+      try {
+        r = await fetch(url);
+      } catch (e) { this.metaLine = 'Netzwerkfehler'; return; }
+      if (!r.ok) {
+        this.metaLine = r.status === 404 ? 'decision_id nicht im Graphen' : `Fehler ${r.status}`;
+        return;
+      }
+      const d = await r.json();
+      this.metaLine = `${d.meta.n_nodes} Knoten · ${d.meta.n_edges} Kanten`
+                    + (d.meta.truncated ? ' (gekürzt)' : '');
+      this.render(d);
+    },
+
+    render(d) {
+      const container = document.getElementById('cy-graph');
+      if (this.cy) { this.cy.destroy(); }
+      this.cy = cytoscape({
+        container,
+        elements: [...d.nodes, ...d.edges],
+        layout: { name: 'cose-bilkent', animate: false,
+                  idealEdgeLength: 90, nodeRepulsion: 6500,
+                  edgeElasticity: 0.45 },
+        style: [
+          {
+            selector: 'node',
+            style: {
+              'label': 'data(label)',
+              'width':  'mapData(indegree, 0, 200, 14, 60)',
+              'height': 'mapData(indegree, 0, 200, 14, 60)',
+              'background-color': (ele) => palette[ele.data('source')] || palette.unknown,
+              'color': '#0f172a',
+              'font-size': '9px',
+              'font-family': 'ui-monospace, monospace',
+              'text-valign': 'bottom',
+              'text-margin-y': 3,
+              'text-outline-color': '#fff',
+              'text-outline-width': 1,
+              'border-width': 1,
+              'border-color': '#334155',
+            }
+          },
+          {
+            selector: 'edge',
+            style: {
+              'width': 1,
+              'line-color': '#cbd5e1',
+              'curve-style': 'straight',
+              'target-arrow-color': '#94a3b8',
+              'target-arrow-shape': 'triangle',
+              'arrow-scale': 0.7,
+            }
+          },
+          { selector: 'node:selected',
+            style: { 'border-width': 3, 'border-color': '#f59e0b' } },
+        ],
+      });
+      const self = this;
+      this.cy.on('tap', 'node', (e) => { self.tooltip = e.target.data(); });
+      this.cy.on('tap', (e) => { if (e.target === self.cy) self.tooltip = null; });
+    },
+  };
+}
+</script>
+
+{% endblock %}

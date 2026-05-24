@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1 class="text-2xl font-semibold mb-6">Downloads</h1>
+
+{% if not artifacts %}
+<div class="bg-white border border-slate-200 rounded p-6 text-center text-slate-500">
+  No artifacts yet.
+</div>
+{% else %}
+
+<div class="bg-white rounded border border-slate-200 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-100 text-slate-600">
+      <tr>
+        <th class="text-left px-3 py-2">File</th>
+        <th class="text-right px-3 py-2">Size</th>
+        <th class="text-left px-3 py-2">Modified</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in artifacts %}
+      <tr class="border-t border-slate-100">
+        <td class="px-3 py-2 font-mono">{{ a.rel_path }}</td>
+        <td class="px-3 py-2 text-right font-mono">{{ '%0.1f'|format(a.size_bytes/1024) }} KB</td>
+        <td class="px-3 py-2 text-slate-500">{{ a.mtime|int }}</td>
+        <td class="px-3 py-2 text-right">
+          <a href="/downloads/{{ a.rel_path }}" class="text-slate-900 hover:underline">download</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block title %}{{ q.query_id[:8] }} — Inspector{% endblock %}
+{% block content %}
+
+<a href="javascript:history.length>1?history.back():location.assign('/metrics/recall-ceiling')"
+   class="text-sm text-slate-500 hover:underline">← Back</a>
+<h1 class="text-xl font-semibold mt-2 mb-3">
+  {% if query_meta and query_meta.file_number %}{{ query_meta.file_number }}{% else %}Query{% endif %}
+  <span class="text-sm text-slate-400 font-mono ml-2">{{ q.query_id }}</span>
+</h1>
+
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+  <!-- LEFT: metadata + GT list (4 cols) -->
+  <div class="lg:col-span-4 space-y-4">
+
+    <div class="bg-white rounded border border-slate-200 p-4 text-sm">
+      <h2 class="font-semibold mb-2">Query metadata</h2>
+      <dl class="grid grid-cols-3 gap-y-1">
+        <dt class="text-slate-500">Language</dt><dd class="col-span-2">{{ q.language or '–' }}</dd>
+        <dt class="text-slate-500">Year</dt><dd class="col-span-2">{{ q.year or '–' }}</dd>
+        {% if query_meta and query_meta.date %}
+          <dt class="text-slate-500">Date (ms)</dt><dd class="col-span-2 font-mono text-xs">{{ query_meta.date }}</dd>
+        {% endif %}
+        <dt class="text-slate-500">|GT|</dt><dd class="col-span-2">{{ n_total_gt }}</dd>
+        <dt class="text-slate-500">In Qdrant</dt>
+        <dd class="col-span-2">
+          <span class="font-semibold">{{ n_indexed }}</span> / {{ n_total_gt }}
+          {% if n_indexed < n_total_gt %}
+            <span class="text-amber-600 text-xs ml-2">{{ n_total_gt - n_indexed }} missing!</span>
+          {% endif %}
+        </dd>
+      </dl>
+      <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+        {% if query_source_link %}
+        <a href="{{ query_source_link.url }}"
+           target="_blank" rel="noopener"
+           class="text-sky-700 hover:underline font-medium"
+           title="Open this decision on its official site">
+          ↗ {{ query_source_link.host }}
+        </a>
+        {% endif %}
+        <a href="{{ hf_url('rcds/swiss_doc2doc_ir', q.query_id) }}"
+           target="_blank" rel="noopener"
+           class="text-sky-700 hover:underline"
+           title="Opens the HF Data Studio with a SQL query that filters to this decision_id (~10s on first click)">
+          ↗ doc2doc-ir source row (cited_rulings)
+        </a>
+        <a href="{{ hf_url('rcds/swiss_rulings', q.query_id) }}"
+           target="_blank" rel="noopener"
+           class="text-sky-700 hover:underline"
+           title="Opens the HF Data Studio with a SQL query that filters to this decision_id (~10s on first click)">
+          ↗ swiss_rulings source row (full text)
+        </a>
+      </div>
+    </div>
+
+    {% if q.query_text %}
+    <div class="bg-white rounded border border-slate-200 p-4 text-sm">
+      <h2 class="font-semibold mb-2">
+        Query text
+        <span class="text-xs text-slate-400 font-normal ml-1">{{ q.query_text|length }} chars</span>
+      </h2>
+      <pre class="whitespace-pre-wrap text-xs text-slate-700 bg-slate-50 p-3 rounded leading-relaxed">{{ q.query_text }}</pre>
+    </div>
+    {% endif %}
+
+    <div class="bg-white rounded border border-slate-200 p-4 text-sm">
+      <h2 class="font-semibold mb-3">Ground-Truth list ({{ n_total_gt }})</h2>
+      <div class="space-y-3">
+        {% for row in gt_rank_table %}
+          <div class="border-t border-slate-100 pt-3 first:border-t-0 first:pt-0">
+            <div class="flex items-baseline gap-2 mb-1 flex-wrap">
+              {% if row.indexed %}
+                <span class="pill bg-emerald-100 text-emerald-800">in Qdrant</span>
+              {% else %}
+                <span class="pill bg-rose-100 text-rose-800">NOT indexed</span>
+              {% endif %}
+              <span class="font-mono text-xs">
+                {% if row.meta and row.meta.file_number %}{{ row.meta.file_number }}{% else %}{{ row.id[:13] }}…{% endif %}
+              </span>
+              {% if row.meta %}
+                <span class="text-xs text-slate-500">{{ row.meta.language }}</span>
+              {% endif %}
+              <span class="ml-auto flex gap-2 text-xs">
+                {% if row.source_link %}
+                <a href="{{ row.source_link.url }}"
+                   target="_blank" rel="noopener"
+                   class="text-sky-700 hover:underline font-medium"
+                   title="Open this decision on its official site">↗ {{ row.source_link.host }}</a>
+                {% endif %}
+                <a href="{{ hf_url('rcds/swiss_rulings', row.id) }}"
+                   target="_blank" rel="noopener"
+                   class="text-sky-700 hover:underline"
+                   title="HF Data Studio SQL filter on this decision_id (~10s first click)">↗ HF</a>
+              </span>
+            </div>
+            <div class="text-xs grid grid-cols-3 sm:grid-cols-5 gap-1">
+              {% for s in systems %}
+                <div class="text-center">
+                  <div class="text-slate-400 truncate" title="{{ s }}">{{ s }}</div>
+                  {% if row[s] %}
+                    <div class="text-emerald-700 font-semibold">
+                      {% set ranks = row[s] %}
+                      {% if 'cross_encoder_20' in ranks %}#{{ ranks['cross_encoder_20'] }}{% else %}–{% endif %}
+                    </div>
+                  {% else %}
+                    <div class="text-slate-300">–</div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      <p class="text-xs text-slate-400 mt-3">Ranks shown for cross_encoder, k=20.</p>
+    </div>
+  </div>
+
+  <!-- RIGHT: side-by-side cytoscape graphs (8 cols) -->
+  <div class="lg:col-span-8 space-y-4" x-data='graphPair({{ {"qid": q.query_id, "left": left, "right": right, "view": view, "systems": systems} | tojson }})'>
+
+    <div class="bg-white rounded border border-slate-200 px-3 py-2 flex flex-wrap items-center gap-2 sm:gap-3 text-sm">
+      <span class="text-slate-500">View:</span>
+      <button @click="setView('ranked')"
+              :class="state.view === 'ranked' ? 'bg-slate-900 text-white' : 'bg-slate-100 hover:bg-slate-200'"
+              class="px-3 py-1 rounded text-xs">Top-k retrieved</button>
+      <button @click="setView('pool')"
+              :class="state.view === 'pool' ? 'bg-slate-900 text-white' : 'bg-slate-100 hover:bg-slate-200'"
+              class="px-3 py-1 rounded text-xs">Full pool (Pool-Recall)</button>
+      <span class="text-xs text-slate-400 sm:ml-auto basis-full sm:basis-auto"
+            x-text="state.view === 'pool' ? 'green = GT in pool, red = GT missing, grey = pool noise' : 'green = retrieved &amp; GT, red = GT not in top-k, grey = retrieved non-GT'">
+      </span>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {% for side in ['left', 'right'] %}
+        <div class="bg-white rounded border border-slate-200">
+          <div class="flex flex-wrap items-center gap-1 px-2 py-2 border-b border-slate-100 text-xs">
+            <span class="text-slate-500 mr-1">{{ side }}:</span>
+            {% for s in systems %}
+              <button @click="select('{{ side }}', '{{ s }}')"
+                      :class="state.{{ side }} === '{{ s }}'
+                              ? 'bg-slate-900 text-white'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'"
+                      class="px-2 py-0.5 rounded text-xs">{{ s }}</button>
+            {% endfor %}
+          </div>
+          <div :id="'cy-{{ side }}'" class="w-full bg-slate-50 h-[360px] sm:h-[480px]"></div>
+          <div class="px-3 py-2 text-xs text-slate-500 border-t border-slate-100 flex flex-wrap gap-x-3 gap-y-1 justify-between">
+            <span x-text="state.{{ side }}_summary || '…'" class="break-words min-w-0"></span>
+            <span class="text-slate-400 whitespace-nowrap">scroll to zoom · drag to pan</span>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="bg-white rounded border border-slate-200 p-3 text-xs flex flex-wrap items-center gap-3">
+      <span class="font-semibold">Legend:</span>
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full inline-block bg-slate-900"></span> query</span>
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full inline-block bg-emerald-500"></span> hit (in GT)</span>
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full inline-block bg-rose-500"></span> missing GT</span>
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full inline-block bg-slate-400"></span> non-GT pool / retrieval</span>
+      <span class="flex items-center gap-1">
+        <span class="w-3 h-3 rounded-full inline-block bg-slate-300" style="border:2px solid #f59e0b"></span>
+        gold border = ANN seed (cosine top-60)
+      </span>
+      <span class="flex items-center gap-1 text-slate-500">edge = citation</span>
+      <span class="flex items-center gap-1 text-slate-500">size ∝ indegree</span>
+    </div>
+
+    <div class="bg-white rounded border border-slate-200 p-3 text-xs"
+         x-show="state.tooltip" x-cloak>
+      <div class="flex items-baseline gap-2 mb-1 flex-wrap">
+        <span class="font-mono text-slate-700 font-semibold" x-text="state.tooltip?.label"></span>
+        <span class="font-mono text-slate-400 text-[11px]" x-text="state.tooltip?.id?.slice(0, 13) + '…'"></span>
+        <span class="ml-auto flex gap-3">
+          <a x-show="state.tooltip?.source_link" :href="state.tooltip?.source_link?.url"
+             target="_blank" rel="noopener"
+             class="text-sky-700 hover:underline"
+             title="Open the decision / law on its official site">
+             ↗ <span x-text="state.tooltip?.source_link?.host"></span>
+          </a>
+          <a x-show="state.tooltip?.hf_url" :href="state.tooltip?.hf_url"
+             target="_blank" rel="noopener"
+             class="text-sky-700 hover:underline"
+             title="HF Data Studio SQL filter on this decision_id (~10s first click)">↗ HF source</a>
+        </span>
+      </div>
+      <div class="grid grid-cols-2 gap-x-3 gap-y-0.5 mb-2">
+        <div>kind</div><div x-text="state.tooltip?.kind"></div>
+        <div>seed?</div><div x-text="state.tooltip?.is_seed ? 'yes (in cosine top-60)' : 'no (expansion-only)'"></div>
+        <div>indegree</div><div x-text="state.tooltip?.indegree"></div>
+        <div>cosine</div><div x-text="state.tooltip?.cosine?.toFixed?.(3) ?? '–'"></div>
+        <div>cross-enc.</div><div x-text="state.tooltip?.cross_encoder?.toFixed?.(3) ?? '–'"></div>
+        <div>rank</div><div x-text="state.tooltip?.rank ?? '–'"></div>
+        <div>language</div><div x-text="state.tooltip?.language ?? '–'"></div>
+      </div>
+      <div class="text-slate-700 whitespace-pre-line" x-text="state.tooltip?.text_excerpt"></div>
+    </div>
+
+  </div>
+</div>
+
+<script src="/static/vendor/cytoscape.min.js"></script>
+<script src="/static/vendor/layout-base.js"></script>
+<script src="/static/vendor/cose-base.js"></script>
+<script src="/static/vendor/cytoscape-cose-bilkent.js"></script>
+<script>
+function graphPair(initial) {
+  return {
+    state: {
+      left: initial.left, right: initial.right,
+      view: initial.view || 'ranked',
+      left_summary: '', right_summary: '',
+      tooltip: null,
+    },
+    cy: {left: null, right: null},
+    init() {
+      this.$nextTick(() => {
+        this.load('left', this.state.left);
+        this.load('right', this.state.right);
+      });
+    },
+    select(side, system) {
+      this.state[side] = system;
+      this.load(side, system);
+    },
+    setView(view) {
+      this.state.view = view;
+      this.load('left', this.state.left);
+      this.load('right', this.state.right);
+    },
+    async load(side, system) {
+      const v = this.state.view;
+      const url = `/inspector/${initial.qid}/graph?system=${system}&view=${v}&ranking=cross_encoder&k=20`;
+      const r = await fetch(url);
+      if (!r.ok) { return; }
+      const d = await r.json();
+      const c = d.config;
+      let summary;
+      if (c.view === 'pool') {
+        const pct = c.n_gt > 0 ? Math.round(100*c.n_pool_hits/c.n_gt) : 0;
+        summary = `${system}: pool=${c.n_pool} · GT∩pool=${c.n_pool_hits}/${c.n_gt} (${pct}%) — via seed: ${c.n_gt_via_seed}, via expansion only: ${c.n_gt_via_expansion_only}`;
+        if (c.pool_truncated) summary += ` · ${d.elements.nodes.length} nodes shown (truncated)`;
+      } else {
+        summary = `${system}: ${c.n_retrieved} retrieved · ${c.n_gt} GT · GT-via-seed: ${c.n_gt_via_seed}, via-expansion-only: ${c.n_gt_via_expansion_only} · ${d.elements.edges.length} edges`;
+      }
+      this.state[`${side}_summary`] = summary;
+      this.render(side, d.elements);
+    },
+    render(side, elements) {
+      const container = document.getElementById(`cy-${side}`);
+      if (this.cy[side]) { this.cy[side].destroy(); }
+      this.cy[side] = cytoscape({
+        container,
+        elements: [...elements.nodes, ...elements.edges],
+        layout: { name: 'cose-bilkent', animate: false, idealEdgeLength: 80,
+                  nodeRepulsion: 6000, edgeElasticity: 0.4 },
+        style: [
+          {
+            selector: 'node',
+            style: {
+              'label': 'data(label)',
+              'width': 'mapData(indegree, 0, 200, 14, 60)',
+              'height': 'mapData(indegree, 0, 200, 14, 60)',
+              'background-color': '#94a3b8',
+              'color': '#0f172a',
+              'font-size': '9px',
+              'text-valign': 'bottom',
+              'text-margin-y': 3,
+              'text-outline-color': '#fff',
+              'text-outline-width': 1,
+              'border-width': 1,
+              'border-color': '#475569',
+            }
+          },
+          { selector: 'node[kind = "query"]', style: { 'background-color': '#0f172a', 'shape': 'diamond', 'width': 36, 'height': 36, 'border-color': '#0f172a' } },
+          { selector: 'node[kind = "hit"]', style: { 'background-color': '#10b981', 'border-color': '#047857' } },
+          { selector: 'node[kind = "missing_gt"]', style: { 'background-color': '#f43f5e', 'border-color': '#9f1239' } },
+          { selector: 'node[kind = "miss"]', style: { 'background-color': '#94a3b8', 'border-color': '#475569' } },
+          { selector: 'node[kind = "pool_other"]', style: { 'background-color': '#cbd5e1', 'border-color': '#94a3b8', 'width': 8, 'height': 8, 'opacity': 0.55, 'label': '' } },
+          // Seeds get a thick gold border on top of their kind colour, so a
+          // green-with-gold node = "GT cosine surfaced directly" while a
+          // green-no-border node = "GT only reachable via expansion" (the
+          // graph-vs-embedding contribution made visible).
+          { selector: 'node[?is_seed]', style: { 'border-color': '#f59e0b', 'border-width': 3 } },
+          { selector: 'node[?is_seed][kind = "pool_other"]', style: { 'width': 14, 'height': 14, 'opacity': 0.85 } },
+          { selector: 'edge', style: { 'width': 1, 'line-color': '#cbd5e1', 'curve-style': 'straight', 'target-arrow-color': '#cbd5e1', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.6 } },
+          { selector: 'node:selected', style: { 'border-width': 3, 'border-color': '#f59e0b' } },
+        ],
+      });
+      const self = this;
+      this.cy[side].on('tap', 'node', (e) => {
+        self.state.tooltip = e.target.data();
+      });
+      this.cy[side].on('tap', (e) => {
+        if (e.target === self.cy[side]) self.state.tooltip = null;
+      });
+    },
+  };
+}
+</script>
+
+{% endblock %}

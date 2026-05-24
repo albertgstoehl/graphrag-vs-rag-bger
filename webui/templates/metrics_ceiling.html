@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{% block title %}Pipeline Matrix — kg-rag-control{% endblock %}
+{% block content %}
+
+<h1 class="text-2xl font-semibold mb-1">Pipeline Matrix</h1>
+<p class="text-sm text-slate-500 mb-4">
+  Ground-truth coverage at every stage of the retrieval pipeline.
+  Left block = pool growth (Recall- or Precision-Ceiling); right block =
+  ranked output (Recall@k or Precision@k). The metric selector below
+  flips both blocks at once. Hover a column header to read what the
+  stage does; click any cell for per-stage drilldown.
+</p>
+
+{% if not matrix.systems %}
+<div class="bg-white border border-slate-200 rounded p-6 text-center text-slate-500">
+  No pipeline data yet. <a href="/runs/new" class="text-slate-900 underline">Run the pipeline</a> first.
+</div>
+{% else %}
+
+<div class="bg-white rounded border border-slate-200 p-3 mb-4 text-sm flex flex-wrap items-baseline gap-x-5 gap-y-1">
+  {% if header.run %}
+    <a href="/runs/{{ header.run.id }}" class="font-semibold text-slate-900 hover:underline">Run #{{ header.run.id }}</a>
+    <span class="text-slate-500">started {{ header.run.started_at }}</span>
+    <span class="text-slate-500">duration {{ header.run.duration_s or '–' }}s</span>
+    <span class="text-slate-500">systems: {{ header.run.systems }}</span>
+  {% else %}
+    <span class="text-slate-500">No completed run yet</span>
+  {% endif %}
+  <span class="ml-auto"></span>
+  <span class="text-slate-700"><b>{{ header.n_queries }}</b> queries</span>
+  <span class="text-slate-700">
+    {% for lang, n in header.lang_breakdown.items() %}{{ lang }}:<b>{{ n }}</b> {% endfor %}
+  </span>
+  <span class="text-slate-700">GT: <b>{{ header.gt_total }}</b> citations</span>
+</div>
+
+<div x-data='matrixTable({{ matrix|tojson }})'>
+
+<div class="flex flex-wrap gap-3 items-end mb-2">
+  <div>
+    <label class="block text-xs text-slate-500 mb-1">Matrix metric</label>
+    <select x-model="poolMetric"
+            class="border border-slate-300 rounded px-2 py-1 text-sm">
+      <option value="recall">Recall</option>
+      <option value="precision" x-bind:disabled="!hasPoolPrecision()">
+        Precision
+      </option>
+    </select>
+  </div>
+  <div class="text-xs text-slate-500" x-show="poolMetric === 'precision'">
+    Precision palette scales 0&nbsp;→&nbsp;<span x-text="(maxPoolPrecision()*100).toFixed(2) + '%'"></span>
+    on pool cells, 0&nbsp;→&nbsp;<span x-text="(maxRankPrecision()*100).toFixed(2) + '%'"></span>
+    on rank cells (per-block max — precision values are tiny relative to recall).
+  </div>
+  <div class="text-xs text-slate-500 ml-auto" x-show="!hasPoolPrecision()">
+    Precision-Ceiling not in this run's pool metrics — re-run Stage 3 to populate the pool block.
+  </div>
+</div>
+
+<div class="md:hidden text-xs text-slate-500 mb-1 flex items-center gap-1">
+  ← swipe the matrix to see all stages →
+</div>
+<div class="bg-white rounded border border-slate-200 overflow-x-auto scroll-hint">
+  <table class="w-full text-sm border-collapse">
+    <thead class="bg-slate-100 text-slate-600 sticky top-0">
+      <tr>
+        <th class="text-left px-3 py-2 sticky left-0 bg-slate-100 z-10">System</th>
+        {% for s in matrix.pool_stages %}
+          <th class="text-right px-2 py-2 whitespace-nowrap"
+              :class="{ 'bg-amber-100': hoveredStage === '{{ s.key }}' }"
+              @mouseenter="setHover('{{ s.key }}')"
+              @mouseleave="setHover(null)">
+            <span class="cursor-help underline decoration-dotted">{{ s.label }}</span>
+          </th>
+        {% endfor %}
+        <th class="px-1" style="border-left: 2px solid #94a3b8"></th>
+        {% for s in matrix.rank_stages %}
+          <th class="text-right px-2 py-2 whitespace-nowrap"
+              :class="{ 'bg-amber-100': hoveredStage === '{{ s.key }}' }"
+              @mouseenter="setHover('{{ s.key }}')"
+              @mouseleave="setHover(null)">
+            <span class="cursor-help underline decoration-dotted">{{ s.label }}</span>
+          </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for sys in matrix.systems %}
+      <tr class="border-t border-slate-100">
+        <td class="px-3 py-2 font-mono sticky left-0 bg-white">{{ sys }}</td>
+        {% for s in matrix.pool_stages %}
+          <td class="text-right px-2 py-2 cursor-pointer transition-colors hover:ring-2 hover:ring-slate-400"
+              :style="cellStyle('{{ sys }}', '{{ s.key }}')"
+              @click="select('{{ sys }}', '{{ s.key }}'); $dispatch('drilldown-cell', {cell: '{{ sys }}|{{ s.key }}', metric: poolMetric})">
+            <div x-html="cellHTML('{{ sys }}', '{{ s.key }}', true)"></div>
+          </td>
+        {% endfor %}
+        <td class="px-1" style="border-left: 2px solid #94a3b8"></td>
+        {% for s in matrix.rank_stages %}
+          <td class="text-right px-2 py-2 cursor-pointer transition-colors hover:ring-2 hover:ring-slate-400"
+              :style="cellStyle('{{ sys }}', '{{ s.key }}')"
+              @click="select('{{ sys }}', '{{ s.key }}'); $dispatch('drilldown-cell', {cell: '{{ sys }}|{{ s.key }}', metric: poolMetric})">
+            <div x-html="cellHTML('{{ sys }}', '{{ s.key }}', false)"></div>
+          </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="px-3 py-2 border-t border-slate-200 text-xs text-slate-700 min-h-[2.75rem]"
+       x-show="hoveredStage" x-transition.opacity>
+    <span class="font-semibold mr-2" x-text="hoveredStage + ':'"></span>
+    <span x-text="hoveredTip()"></span>
+  </div>
+
+  <div class="border-t border-slate-200 bg-slate-50 px-3 py-3 text-sm" x-show="selected" x-transition>
+    <div class="flex items-baseline gap-3 mb-2">
+      <span class="font-semibold" x-text="selected?.system"></span>
+      <span class="text-slate-500">·</span>
+      <span class="font-mono" x-text="selectedStageLabel()"></span>
+      <span class="text-slate-400 ml-auto cursor-pointer" @click="selected = null">close ✕</span>
+    </div>
+    <template x-if="selectedCell()">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 tabular-nums">
+        <template x-if="selectedCell().kind === 'pool'">
+          <div class="contents">
+            <div><span class="text-slate-500">Recall-Ceiling</span></div>
+            <div x-text="(selectedCell().value*100).toFixed(2) + '%'"></div>
+            <template x-if="selectedCell().precision != null">
+              <div class="contents">
+                <div><span class="text-slate-500">Precision-Ceiling</span></div>
+                <div x-text="(selectedCell().precision*100).toFixed(2) + '%'"></div>
+              </div>
+            </template>
+            <div><span class="text-slate-500">Mean pool size</span></div>
+            <div x-text="selectedCell().pool_size.toFixed(1)"></div>
+            <div><span class="text-slate-500">n_queries</span></div>
+            <div x-text="selectedCell().n_queries"></div>
+          </div>
+        </template>
+        <template x-if="selectedCell().kind === 'rank'">
+          <div class="contents">
+            <div><span class="text-slate-500">Recall@k</span></div>
+            <div x-text="(selectedCell().value*100).toFixed(2) + '%'"></div>
+            <div><span class="text-slate-500">Precision@k</span></div>
+            <div x-text="(selectedCell().precision*100).toFixed(2) + '%'"></div>
+            <div><span class="text-slate-500">MRR</span></div>
+            <div x-text="selectedCell().mrr.toFixed(4)"></div>
+            <div><span class="text-slate-500">NDCG</span></div>
+            <div x-text="selectedCell().ndcg.toFixed(4)"></div>
+            <div><span class="text-slate-500">Hit rate</span></div>
+            <div x-text="(selectedCell().hit_rate*100).toFixed(1) + '%'"></div>
+            <div><span class="text-slate-500">n_queries</span></div>
+            <div x-text="selectedCell().n_queries"></div>
+          </div>
+        </template>
+      </div>
+    </template>
+    <template x-if="!selectedCell()">
+      <div class="text-slate-500 italic">No data for this (system, stage) combination.</div>
+    </template>
+    <template x-if="selectedCell() && selectedCell().kind === 'pool' && selected?.stage !== 'post_cap'">
+      <div class="mt-2 text-xs text-slate-500 italic">
+        Per-query Pool-Recall/Precision rows aren't stored for this pool stage. Click the
+        <code class="bg-slate-100 px-1 rounded">post_cap</code>
+        column to drill into per-query rows.
+      </div>
+    </template>
+  </div>
+</div>
+
+</div>{# /matrixTable scope #}
+
+<div x-data="perQueryPanel({homeSystem: 'graph_1hop', urlParam: 'cell'})"
+     x-init="setup()"
+     @drilldown-open.window="openRanked($event.detail)"
+     @drilldown-cell.window="openFromString($event.detail.cell, $event.detail.metric)">
+  {% include "_per_query_panel.html" %}
+</div>
+
+<p class="text-xs text-slate-400 mt-3">
+  Recall cells: linear 0–60 % (white → deep emerald). Precision cells:
+  per-block normalised — pool block to its own max, rank block to its own
+  max, since rank precision peaks much lower than recall does. Pool cells
+  show the mean candidate count below the % value. Click any ranked cell
+  or the <code class="bg-slate-100 px-1 rounded">post_cap</code> pool
+  column to drill into per-query rows.
+</p>
+
+<script>
+function matrixTable(data) {
+  return {
+    data,
+    hoveredStage: null,
+    selected: null,
+    /** 'recall' or 'precision' — drives BOTH the pool block (Recall- or
+        Precision-Ceiling) AND the rank block (Recall@k or Precision@k).
+        Named `poolMetric` for back-compat with the original toggle, but it
+        now flips the whole matrix. */
+    poolMetric: 'recall',
+    cellKey(sys, stage) { return sys + '|' + stage; },
+    getCell(sys, stage) { return this.data.cells[this.cellKey(sys, stage)] || null; },
+    findStage(key) {
+      return this.data.pool_stages.find(s => s.key === key)
+          || this.data.rank_stages.find(s => s.key === key)
+          || null;
+    },
+    setHover(key) { this.hoveredStage = key; },
+    hoveredTip() {
+      const s = this.findStage(this.hoveredStage);
+      return s ? s.tooltip : '';
+    },
+    select(sys, stage) {
+      this.selected = { system: sys, stage };
+    },
+    selectedCell() {
+      if (!this.selected) return null;
+      return this.getCell(this.selected.system, this.selected.stage);
+    },
+    selectedStageLabel() {
+      if (!this.selected) return '';
+      const s = this.findStage(this.selected.stage);
+      return s ? s.label : this.selected.stage;
+    },
+    /** Does the loaded matrix carry per-stage Pool-Precision? Older runs
+        (CSV without `mean_precision_ceiling`) only have post_cap precision
+        from the live fallback — we can still allow the toggle, just with
+        most pool cells dashed out. Treat as "has precision" if any pool
+        cell carries a precision value. */
+    hasPoolPrecision() {
+      for (const s of this.data.pool_stages) {
+        for (const sys of this.data.systems) {
+          const c = this.getCell(sys, s.key);
+          if (c && c.precision != null) return true;
+        }
+      }
+      return false;
+    },
+    /** Max Pool-Precision across the matrix — palette ceiling so the tiny
+        precision values (~0.001-0.05) still light up the green scale. */
+    maxPoolPrecision() {
+      let mx = 0;
+      for (const s of this.data.pool_stages) {
+        for (const sys of this.data.systems) {
+          const c = this.getCell(sys, s.key);
+          if (c && typeof c.precision === 'number' && c.precision > mx) mx = c.precision;
+        }
+      }
+      return mx > 0 ? mx : 1;
+    },
+    /** Max Precision@k across rank cells — same idea, but rank precision
+        peaks much lower than pool precision (~0.024 vs ~0.014 in the
+        sample data, but in general different magnitudes). Separate scale
+        keeps each block legible on its own. */
+    maxRankPrecision() {
+      let mx = 0;
+      for (const s of this.data.rank_stages) {
+        for (const sys of this.data.systems) {
+          const c = this.getCell(sys, s.key);
+          if (c && typeof c.precision === 'number' && c.precision > mx) mx = c.precision;
+        }
+      }
+      return mx > 0 ? mx : 1;
+    },
+    /** Pool-cell value under the current poolMetric. Returns null when the
+        cell doesn't carry that metric (e.g. precision missing on old CSVs). */
+    poolValue(c) {
+      if (!c || c.kind !== 'pool') return null;
+      return this.poolMetric === 'precision'
+        ? (typeof c.precision === 'number' ? c.precision : null)
+        : c.value;
+    },
+    /** Rank-cell value under the current matrix metric. `value` is always
+        Recall@k in summary.csv; `precision` is Precision@k. */
+    rankValue(c) {
+      if (!c || c.kind !== 'rank') return null;
+      return this.poolMetric === 'precision'
+        ? (typeof c.precision === 'number' ? c.precision : null)
+        : c.value;
+    },
+    cellHTML(sys, stage, isPool) {
+      const c = this.getCell(sys, stage);
+      if (!c) return '<span class="text-slate-300">–</span>';
+      const isPrecision = this.poolMetric === 'precision';
+      if (isPool) {
+        const v = this.poolValue(c);
+        if (v == null) return '<span class="text-slate-300">–</span>';
+        const pct = (v * 100).toFixed(isPrecision ? 2 : 1) + '%';
+        if (c.pool_size != null) {
+          return `<div class="tabular-nums">${pct}</div>` +
+                 `<div class="text-xs opacity-70 tabular-nums">${c.pool_size.toFixed(0)}</div>`;
+        }
+        return `<div class="tabular-nums">${pct}</div>`;
+      }
+      // Rank stage — flips with the same toggle.
+      const v = this.rankValue(c);
+      if (v == null) return '<span class="text-slate-300">–</span>';
+      const pct = (v * 100).toFixed(isPrecision ? 2 : 1) + '%';
+      return `<div class="tabular-nums">${pct}</div>`;
+    },
+    cellStyle(sys, stage) {
+      const c = this.getCell(sys, stage);
+      if (!c) return '';
+      const isPrecision = this.poolMetric === 'precision';
+      let t;
+      if (c.kind === 'pool') {
+        const v = this.poolValue(c);
+        if (v == null) return 'background-color: #fafafa; color: #cbd5e1;';
+        // Recall: fixed 0-60% scale, matches viewer expectations from the
+        // thesis figures. Precision: per-block max so each side adapts to
+        // its own value range.
+        t = isPrecision
+          ? Math.min(1, v / this.maxPoolPrecision())
+          : Math.min(1, v / 0.60);
+      } else {
+        const v = this.rankValue(c);
+        if (v == null) return 'background-color: #fafafa; color: #cbd5e1;';
+        t = isPrecision
+          ? Math.min(1, v / this.maxRankPrecision())
+          : Math.min(1, v / 0.60);
+      }
+      const r = Math.round(255 - t * (255 - 5));
+      const g = Math.round(255 - t * (255 - 122));
+      const b = Math.round(255 - t * (255 - 85));
+      const fg = t > 0.55 ? '#ffffff' : '#0f172a';
+      return `background-color: rgb(${r},${g},${b}); color: ${fg}`;
+    },
+  };
+}
+</script>
+
+{% endif %}
+{% endblock %}

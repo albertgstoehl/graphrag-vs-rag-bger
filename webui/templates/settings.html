@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Settings — kg-rag-control{% endblock %}
+{% block content %}
+
+<h1 class="text-2xl font-semibold mb-1">Settings</h1>
+<p class="text-sm text-slate-500 mb-4">
+  Where the GPU services run. Changes apply to the next pipeline run and to
+  the next Inspector request — already-running runs keep the old values.
+</p>
+
+{% if saved %}
+<div class="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded p-3 mb-4 text-sm">
+  Saved. The next run / inspector request will use the new values.
+</div>
+{% endif %}
+
+<form method="post" action="/settings"
+      class="bg-white rounded shadow-sm border border-slate-200 p-5 space-y-5 max-w-2xl">
+
+  <div>
+    <label class="block text-sm font-semibold mb-1" for="aiserver_host">
+      AI server host
+    </label>
+    <input id="aiserver_host" name="aiserver_host" required
+           value="{{ values.aiserver_host }}"
+           class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono">
+    <p class="text-xs text-slate-500 mt-1">
+      Hostname or IP of the box running Qdrant + TEI. Use
+      <code>localhost</code> if everything runs on the same machine.
+    </p>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div>
+      <label class="block text-sm font-semibold mb-1" for="qdrant_port">Qdrant port</label>
+      <input id="qdrant_port" name="qdrant_port" required
+             value="{{ values.qdrant_port }}"
+             class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono">
+    </div>
+    <div>
+      <label class="block text-sm font-semibold mb-1" for="tei_embed_port">TEI embed port</label>
+      <input id="tei_embed_port" name="tei_embed_port" required
+             value="{{ values.tei_embed_port }}"
+             class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono">
+    </div>
+    <div>
+      <label class="block text-sm font-semibold mb-1" for="tei_rerank_ports">
+        TEI rerank ports
+      </label>
+      <input id="tei_rerank_ports" name="tei_rerank_ports" required
+             value="{{ values.tei_rerank_ports }}"
+             class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono">
+      <p class="text-xs text-slate-500 mt-1">comma-separated</p>
+    </div>
+  </div>
+
+  <div class="pt-3 border-t border-slate-100">
+    <button class="bg-slate-900 text-white px-4 py-2 rounded text-sm">Save</button>
+  </div>
+</form>
+
+<details class="mt-6 text-sm text-slate-600 max-w-2xl">
+  <summary class="cursor-pointer select-none">Resulting environment variables</summary>
+  <div class="mt-2 bg-slate-50 border border-slate-200 rounded p-3 font-mono text-xs space-y-1">
+    {% for k, v in derived.items() %}
+      <div><span class="text-slate-500">{{ k }}=</span>{{ v }}</div>
+    {% endfor %}
+  </div>
+  <p class="mt-2 text-xs text-slate-500">
+    These are pushed into <code>os.environ</code> at boot and after every
+    save. Each pipeline run inherits them; the Inspector reads them on the
+    next Qdrant call after a save.
+  </p>
+</details>
+
+{% endblock %}
