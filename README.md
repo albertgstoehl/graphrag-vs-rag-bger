@@ -152,6 +152,8 @@ Hardware-Setup des Original-Runs: 8× RTX 3090 (je 24 GB) auf einem Kubernetes-C
 
    Dann `http://127.0.0.1:8000/` öffnen, unter `/settings` Host und Ports anpassen, im Dashboard `Run` klicken.
 
+   Achtung beim Smoketest: `01_sample_queries.py --n <klein>` schreibt nach `data/eval/eval_queries.jsonl` und überschreibt damit die committed 12'678-Query-Baseline. Vor kleineren Test-Läufen entweder die Datei sichern oder `EVAL_DIR=/tmp/eval-smoke` setzen. Rankings und k-Werte sind in `02_run_retrieval.py` aktuell hartcodiert (alle drei Rankings × vier k-Werte), das Script akzeptiert `--systems` und `--dry-run`, aber kein `--rankings`-Flag.
+
 ## Resultate inspizieren
 
 - `/metrics` für Aggregat-Tabellen (Recall, NDCG, MRR, Graph-Nearness pro System × Ranking × k)
