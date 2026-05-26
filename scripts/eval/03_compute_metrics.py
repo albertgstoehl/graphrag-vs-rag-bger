@@ -18,8 +18,8 @@ METRICS (per query, then averaged):
                      citation graph
 
 OUTPUT:
-    data/eval/metrics/per_query_{system}_{ranking}_{k}.jsonl
-    data/eval/metrics/summary.csv
+    /data/thesis/eval/metrics/per_query_{system}_{ranking}_{k}.jsonl
+    /data/thesis/eval/metrics/summary.csv
 
 USAGE:
     python3 03_compute_metrics.py

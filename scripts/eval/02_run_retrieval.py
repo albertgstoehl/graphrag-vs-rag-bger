@@ -59,10 +59,10 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 # Paths — override via env vars for local dev
-EVAL_DIR = Path(os.environ.get("EVAL_DIR", "/data/thesis/eval"))
+EVAL_DIR = Path(os.environ.get("EVAL_DIR", "data/eval"))
 QUERIES_FILE = EVAL_DIR / "eval_queries.jsonl"
 RESULTS_DIR = EVAL_DIR / "results"
-GRAPH_PATH = Path(os.environ.get("GRAPH_PATH", "/data/thesis/graph/citation_graph.pkl"))
+GRAPH_PATH = Path(os.environ.get("GRAPH_PATH", str(EVAL_DIR / "citation_graph.pkl")))
 
 # Qdrant
 QDRANT_HOST = os.environ.get("QDRANT_HOST", "aiserver01")
@@ -1229,7 +1229,7 @@ def run_retrieval(
     # subsequent CE call hits the in-memory cache).
     if os.environ.get("STAGE2_TEXT_PREWARM", "0") == "1":
         valid_ids_path_env = os.environ.get(
-            "VALID_IDS_PATH", "/app/data/eval/valid_ids.json"
+            "VALID_IDS_PATH", str(EVAL_DIR / "valid_ids.json")
         )
         if os.path.exists(valid_ids_path_env):
             log.info("A4: pre-warming text_cache from %s ...", valid_ids_path_env)

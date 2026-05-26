@@ -55,7 +55,7 @@ from tqdm import tqdm
 
 # ── Config (env-var driven) ───────────────────────────────────────────────────
 
-EVAL_DIR = Path(os.environ.get("EVAL_DIR", "/data/thesis/eval"))
+EVAL_DIR = Path(os.environ.get("EVAL_DIR", "data/eval"))
 OUTPUT_FILE = EVAL_DIR / "eval_queries.jsonl"
 VALID_IDS_PATH = Path(os.environ.get("VALID_IDS_PATH", str(EVAL_DIR / "valid_ids.json")))
 DATE_INDEX_CACHE = Path(os.environ.get("DATE_INDEX_CACHE", str(EVAL_DIR / "date_index.json")))

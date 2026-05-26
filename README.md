@@ -74,17 +74,21 @@ Hardware-Setup des Original-Runs: 8× RTX 3090 (je 24 GB) auf einem Kubernetes-C
 
 1. Repo klonen plus LFS-Inhalte ziehen
 
+   Voraussetzung: das `git-lfs`-Systempaket muss vorhanden sein
+   (`apt install git-lfs` auf Debian/Ubuntu, `pacman -S git-lfs` auf Arch).
+
    ```bash
    git lfs install
    git clone https://github.com/albertgstoehl/graphrag-vs-rag-bger.git
    cd graphrag-vs-rag-bger
+   git lfs pull
    ```
 
 2. Modell-Services starten
 
    ```bash
-   # Qdrant
-   docker run -d --name qdrant -p 6333:6333 qdrant/qdrant:latest
+   # Qdrant (Pin auf v1.13.0, identisch zum Snapshot-Produzenten)
+   docker run -d --name qdrant -p 6333:6333 qdrant/qdrant:v1.13.0
 
    # TEI Embed (BGE-M3)
    docker run -d --name tei-embed --gpus all -p 8010:80 \
