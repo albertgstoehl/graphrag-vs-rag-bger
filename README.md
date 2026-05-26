@@ -2,7 +2,7 @@
 
 Reproduktions-Artefakt zur ZHAW-Bachelorarbeit *AI-Agent für den Rechtsdienst* von Albert Gstöhl (FS 2026, Studiengang Wirtschaftsinformatik, ZHAW School of Management and Law, Betreuung Benjamin Kühnis).
 
-Die Arbeit vergleicht fünf Retrieval-Architekturen unter identischen Bedingungen auf 12'678 Bundesgerichts-Sachverhalten (je 4'226 pro Amtssprache) gegen die in den Urteilen zitierten Leitentscheide als Ground Truth. Das PDF der Arbeit liegt als GitHub-Release `v1.0-thesis` an diesem Repo.
+Die Arbeit vergleicht fünf Retrieval-Architekturen unter identischen Bedingungen auf 12'678 Bundesgerichts-Sachverhalten (je 4'226 pro Amtssprache) gegen die in den Urteilen zitierten Leitentscheide als Ground Truth. Das PDF der Arbeit liegt als GitHub-Release `v1.0` an diesem Repo.
 
 ## Vergleichene Systeme
 
@@ -164,18 +164,18 @@ Hardware-Setup des Original-Runs: 8× RTX 3090 (je 24 GB) auf einem Kubernetes-C
 ## PDF der Arbeit
 
 Die finale Bachelorarbeit liegt als Release-Asset unter
-[Releases / v1.0-thesis](https://github.com/albertgstoehl/graphrag-vs-rag-bger/releases/tag/v1.0-thesis).
+[Releases / v1.0](https://github.com/albertgstoehl/graphrag-vs-rag-bger/releases/tag/v1.0).
 
 ## Zitieren
 
 ```bibtex
-@thesis{gstohl2026graphrag,
+@mastersthesis{gstoehl2026graphrag,
   author = {Gst{\"o}hl, Albert},
-  title  = {AI-Agent für den Rechtsdienst},
+  title  = {{AI-Agent f{\"u}r den Rechtsdienst}},
   school = {ZHAW School of Management and Law},
   year   = {2026},
   type   = {Bachelorarbeit},
-  url    = {https://github.com/albertgstoehl/graphrag-vs-rag-bger}
+  url    = {https://github.com/albertgstoehl/graphrag-vs-rag-bger/releases/tag/v1.0}
 }
 ```
 
