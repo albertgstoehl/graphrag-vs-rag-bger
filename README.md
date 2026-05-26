@@ -37,6 +37,12 @@ scripts/
     build_facts_index.py        facts-Index für HF-freies Stage 1
     04_run_pipeline.sh          End-to-End-Pipeline-Runner
   migrate_qdrant_date_ms.py     Qdrant payload-Migration für date_ms-Index
+  embedding/
+    embed_clean.py              Bulk-Embed via TEI, schreibt Numpy-Shards
+    load_qdrant.py              Numpy-Shards in Qdrant uploaden
+    embed_missing.py            Recovery für Ingest-Lücken (idempotent)
+    upload_snapshot_hf.sh       Einmalig, Qdrant-Snapshot auf HF Hub publizieren
+    restore_qdrant.sh           Snapshot von HF Hub laden und in Qdrant restoren
 
 webui/                          FastAPI + HTMX UI, Inspector, Live-Logs
 
@@ -95,11 +101,29 @@ Hardware-Setup des Original-Runs: 8× RTX 3090 (je 24 GB) auf einem Kubernetes-C
 
 3. Korpus indexieren
 
-   Qdrant-Collection `bger` mit BGE-M3-Embeddings der `rcds/swiss_rulings` plus `rcds/swiss_leading_decisions`-Chunks aufbauen, anschliessend Datums-Payload `date_ms` setzen:
+   Die Qdrant-Collection `bger` enthält rund 3 Millionen BGE-M3-Embeddings der `rcds/swiss_rulings` plus `rcds/swiss_leading_decisions`-Chunks. Zwei Pfade stehen zur Auswahl.
+
+   **Schnellpfad, Snapshot von Hugging Face wiederherstellen.** Der zur Arbeit gehörende Qdrant-Snapshot ist als Hugging-Face-Dataset publiziert (`albertstudy/graphrag-vs-rag-bger-snapshot`, rund 24 GiB). Das Restore-Skript lädt die Datei, prüft den SHA256 gegen den im Repo eingecheckten Manifest und spielt sie via Qdrant-`/snapshots/upload`-Endpoint in eine laufende Instanz ein.
 
    ```bash
-   python scripts/migrate_qdrant_date_ms.py
+   pip install -U "huggingface_hub[cli]"
+   hf auth login   # einmalig, mit Read-Token von hf.co/settings/tokens
+   ./scripts/embedding/restore_qdrant.sh
    ```
+
+   Der Restore dauert auf einer SSD etwa 5 Minuten, der Download je nach Anbindung 10 bis 30 Minuten. Anschliessend ist die Collection mit identischem Inhalt wie im finalen Lauf der Arbeit bereit.
+
+   **Langpfad, Embeddings selbst rechnen.** Wer Zugang zu einer GPU hat und das volle Pipeline durchlaufen will, baut die Embeddings via TEI selbst. Dauert auf einer einzelnen RTX 3090 etwa 8 bis 12 Stunden.
+
+   ```bash
+   python scripts/embedding/embed_clean.py     # 2k-Token-Chunks via TEI embedden
+   python scripts/embedding/load_qdrant.py     # Numpy-Shards in Qdrant uploaden
+   python scripts/embedding/embed_missing.py \ # Optional, schliesst nachträgliche Lücken
+       --missing-ids-file <pfad>
+   python scripts/migrate_qdrant_date_ms.py    # date_ms-Payload-Index nachziehen
+   ```
+
+   Das `embed_missing.py`-Skript ist die korrigierte Nachindex-Variante, die im Mai 2026 die im ursprünglichen Bulk-Lauf verlorenen 3.3 Prozent der `swiss_rulings`-Decisions ergänzt hat. Im publizierten Snapshot ist diese Lücke bereits geschlossen.
 
 4. Bootstrap-Artefakte sind bereits in `data/eval/` per Git LFS. Optional neu bauen:
 

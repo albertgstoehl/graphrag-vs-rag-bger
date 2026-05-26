@@ -2,8 +2,9 @@ import tiktoken
 
 _encoder = tiktoken.get_encoding("cl100k_base")
 
-# gemini-embedding-001 max input is 2048 tokens
-CHUNK_SIZE = 1024      # tokens per chunk
+# BGE-M3 max input is 8192 tokens; we cap at 2048 to keep chunks
+# focused and stay under TEI's batch-token budget.
+CHUNK_SIZE = 2048      # tokens per chunk
 CHUNK_OVERLAP = 128    # token overlap between chunks
 
 
