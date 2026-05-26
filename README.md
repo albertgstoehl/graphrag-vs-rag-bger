@@ -179,6 +179,8 @@ Die finale Bachelorarbeit liegt als Release-Asset unter
 }
 ```
 
+Die in der Arbeit zitierten Quellen liegen als öffentliche Zotero-Gruppen-Bibliothek vor: [zotero.org/groups/6567088/kg-rag-legal/library](https://www.zotero.org/groups/6567088/kg-rag-legal/library). Eintrags-Export ist via "Datei → Exportieren" als BibTeX, CSL JSON oder anderen Formaten möglich.
+
 ## Lizenz
 
 [MIT](LICENSE) für den Code. Die Arbeit selbst (PDF im Release) untersteht der ZHAW-Publikationsregelung.
