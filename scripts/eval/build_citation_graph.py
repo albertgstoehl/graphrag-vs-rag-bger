@@ -36,10 +36,11 @@ import pyarrow.ipc as ipc
 # Configuration
 # ---------------------------------------------------------------------------
 
-DATASET_DIR = (
-    "/data/thesis/hf-cache/datasets/rcds___swiss_doc2doc_ir"
-    "/default/0.0.0/1c3a1e5200f8577d485bdb6ba7f17b17ce5d0d79"
-)
+# The rcds/swiss_doc2doc_ir dataset is loaded via HuggingFace's standard
+# cache directory. Override with HF_HOME / HF_DATASETS_CACHE if you keep
+# the HF cache somewhere other than ~/.cache/huggingface, or with
+# SWISS_DOC2DOC_IR_DIR to point at a pre-extracted Arrow folder.
+SWISS_DOC2DOC_IR_DIR = os.environ.get("SWISS_DOC2DOC_IR_DIR", "")
 
 # All five Arrow shards (train × 3, validation, test)
 ARROW_SHARDS = [
@@ -50,7 +51,7 @@ ARROW_SHARDS = [
     "swiss_doc2doc_ir-test.arrow",
 ]
 
-OUTPUT_DIR = "/data/thesis/graph"
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "data/eval")
 OUTPUT_PATH = os.path.join(OUTPUT_DIR, "citation_graph.pkl")
 
 
@@ -79,6 +80,45 @@ def parse_list_field(raw: str) -> list[str]:
 # Main
 # ---------------------------------------------------------------------------
 
+def _resolve_dataset_dir() -> str:
+    """Locate the swiss_doc2doc_ir Arrow shards.
+
+    Precedence:
+      1. Explicit ``SWISS_DOC2DOC_IR_DIR`` env var.
+      2. Hugging Face datasets cache (``HF_HOME`` / ``HF_DATASETS_CACHE``
+         or ``~/.cache/huggingface``). If the dataset has not been
+         downloaded yet, ``datasets.load_dataset`` is used to pull it via
+         the HF Hub on demand and the resulting Arrow files are read
+         from the local cache.
+    """
+    if SWISS_DOC2DOC_IR_DIR:
+        return SWISS_DOC2DOC_IR_DIR
+    from datasets import load_dataset
+    print("  Loading rcds/swiss_doc2doc_ir from Hugging Face cache "
+          "(downloads on first run)...", flush=True)
+    # Force the dataset to be materialised on disk via cache.
+    load_dataset("rcds/swiss_doc2doc_ir", split="train", trust_remote_code=False,
+                 streaming=False)
+    # The resulting cache layout is
+    # ${HF_HOME}/datasets/rcds___swiss_doc2doc_ir/default/<v>/<sha>/
+    base = os.path.expanduser(
+        os.environ.get("HF_DATASETS_CACHE")
+        or os.path.join(os.environ.get("HF_HOME") or "~/.cache/huggingface",
+                        "datasets")
+    )
+    root = os.path.join(base, "rcds___swiss_doc2doc_ir", "default", "0.0.0")
+    if not os.path.isdir(root):
+        raise FileNotFoundError(
+            f"Could not find dataset at {root}. Set SWISS_DOC2DOC_IR_DIR to "
+            f"override or run `huggingface-cli download "
+            f"--repo-type dataset rcds/swiss_doc2doc_ir`."
+        )
+    revisions = [d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d))]
+    if not revisions:
+        raise FileNotFoundError(f"No dataset revision found in {root}")
+    return os.path.join(root, sorted(revisions)[-1])
+
+
 def build_graph() -> nx.DiGraph:
     """Read all Arrow shards and construct the citation DiGraph."""
     G = nx.DiGraph()
@@ -89,9 +129,11 @@ def build_graph() -> nx.DiGraph:
     n_skipped_self = 0  # self-loop edges (citing_id == cited_id) — we skip these
 
     start = time.time()
+    dataset_dir = _resolve_dataset_dir()
+    print(f"  Reading shards from: {dataset_dir}", flush=True)
 
     for shard_name in ARROW_SHARDS:
-        shard_path = os.path.join(DATASET_DIR, shard_name)
+        shard_path = os.path.join(dataset_dir, shard_name)
         print(f"  Loading shard: {shard_name} ...", flush=True)
 
         with open(shard_path, "rb") as fh:

@@ -1,6 +1,6 @@
 # graphrag-vs-rag-bger
 
-Reproduktions-Artefakt zur ZHAW-Bachelorarbeit *Citation-Graph-Retrieval vs. Embedding-Retrieval auf Schweizer Bundesgerichtsentscheiden* von Albert Gstöhl (FS 2026, Studiengang Wirtschaftsinformatik, ZHAW School of Management and Law, Betreuung Benjamin Kühnis).
+Reproduktions-Artefakt zur ZHAW-Bachelorarbeit *AI-Agent für den Rechtsdienst* von Albert Gstöhl (FS 2026, Studiengang Wirtschaftsinformatik, ZHAW School of Management and Law, Betreuung Benjamin Kühnis).
 
 Die Arbeit vergleicht fünf Retrieval-Architekturen unter identischen Bedingungen auf 12'678 Bundesgerichts-Sachverhalten (je 4'226 pro Amtssprache) gegen die in den Urteilen zitierten Leitentscheide als Ground Truth. Das PDF der Arbeit liegt als GitHub-Release `v1.0-thesis` an diesem Repo.
 
@@ -165,7 +165,7 @@ Die finale Bachelorarbeit liegt als Release-Asset unter
 ```bibtex
 @thesis{gstohl2026graphrag,
   author = {Gst{\"o}hl, Albert},
-  title  = {Citation-Graph-Retrieval vs. Embedding-Retrieval auf Schweizer Bundesgerichtsentscheiden},
+  title  = {AI-Agent für den Rechtsdienst},
   school = {ZHAW School of Management and Law},
   year   = {2026},
   type   = {Bachelorarbeit},

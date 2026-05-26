@@ -11,7 +11,7 @@ PURPOSE:
       - valid_ids.json   — intersection of Qdrant ∩ citation graph (131,125)
       - citation_graph.pkl — provides cited_rulings (case_to_case edges) and
                              cited_laws (case_to_law edges) for every ruling
-      - Qdrant — provides query_text, language, year, date
+      - Qdrant (TEI/aiserver01) — provides query_text, language, year, date
                                   for every decision_id we sample
 
     HF is only needed if you want to re-compute valid_ids or citation_graph
@@ -55,7 +55,7 @@ from tqdm import tqdm
 
 # ── Config (env-var driven) ───────────────────────────────────────────────────
 
-EVAL_DIR = Path(os.environ.get("EVAL_DIR", "data/eval"))
+EVAL_DIR = Path(os.environ.get("EVAL_DIR", "/data/thesis/eval"))
 OUTPUT_FILE = EVAL_DIR / "eval_queries.jsonl"
 VALID_IDS_PATH = Path(os.environ.get("VALID_IDS_PATH", str(EVAL_DIR / "valid_ids.json")))
 DATE_INDEX_CACHE = Path(os.environ.get("DATE_INDEX_CACHE", str(EVAL_DIR / "date_index.json")))
@@ -63,14 +63,14 @@ GRAPH_PATH = Path(os.environ.get("GRAPH_PATH", str(EVAL_DIR / "citation_graph.pk
 METADATA_CACHE = Path(os.environ.get("METADATA_CACHE", str(EVAL_DIR / "decision_metadata.json")))
 FACTS_INDEX_PATH = Path(os.environ.get("FACTS_INDEX_PATH", str(EVAL_DIR / "facts_index.jsonl")))
 
-QDRANT_HOST = os.environ.get("QDRANT_HOST", "localhost")
+QDRANT_HOST = os.environ.get("QDRANT_HOST", "aiserver01")
 QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))
 QDRANT_COLLECTION = "bger"
 RULINGS_SOURCE = "swiss_rulings_chunked"
 LEADING_SOURCE = "swiss_leading_decisions_chunked"
 
 # Sampling parameters
-PER_LANGUAGE_N = 500
+PER_LANGUAGE_N = 4226
 LANGUAGES = ["de", "fr", "it"]
 RANDOM_SEED = 42
 FIRST_N_TOKENS = 4096

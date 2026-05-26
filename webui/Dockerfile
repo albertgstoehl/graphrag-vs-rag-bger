@@ -14,17 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps: webui + pipeline in one venv
+COPY requirements.txt /tmp/req.txt
 COPY webui/requirements.txt /tmp/webui-req.txt
-COPY requirements-poc.txt /tmp/poc-req.txt
 
-RUN pip install --no-cache-dir -r /tmp/webui-req.txt \
- && pip install --no-cache-dir \
-      "qdrant-client>=1.13,<2.0" \
-      "networkx>=3.2" \
-      "requests>=2.31" \
-      "tqdm>=4.66" \
-      "datasets>=3.0" \
-      "huggingface-hub>=0.24"
+RUN pip install --no-cache-dir -r /tmp/req.txt \
+ && pip install --no-cache-dir -r /tmp/webui-req.txt
 
 # Copy pipeline source + webui source
 COPY scripts/   /app/scripts/

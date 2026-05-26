@@ -3,7 +3,7 @@
 
 Usage: python scripts/load_qdrant.py
 """
-import os, sys, time
+import os, sys, time, uuid
 import numpy as np
 
 sys.path.insert(0, os.getcwd())
@@ -76,7 +76,13 @@ def load_dataset(ds_name: str):
         points = []
         for i, doc in enumerate(batch):
             idx = start + i
-            point_id = stored + i  # use sequential int IDs for speed
+            # Use UUIDv5 derived from chunk_id so that point_ids are stable
+            # and globally unique across datasets. Sequential ints reset to
+            # zero per dataset and silently overwrote earlier points when
+            # both swiss_rulings_chunked and swiss_leading_decisions_chunked
+            # were loaded into the same collection.
+            chunk_id = doc.get("chunk_id") or f"{doc.get('decision_id','')}_c{doc.get('chunk_index',0)}"
+            point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
             points.append(models.PointStruct(
                 id=point_id,
                 vector=all_embs[idx].tolist(),

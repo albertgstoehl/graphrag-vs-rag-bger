@@ -1,0 +1,26 @@
+# Pipeline + Recovery dependencies for the kg-rag-legal / graphrag-vs-rag-bger
+# reproduction stack. Web-UI dependencies live in webui/requirements.txt.
+
+# Vector DB client
+qdrant-client>=1.13,<2.0
+
+# Citation graph
+networkx>=3.2
+
+# HF datasets (build_citation_graph.py, embed_clean.py, load_qdrant.py)
+datasets>=3.0
+huggingface-hub>=0.24
+
+# Tokenization (chunking in src/poc/data_prep.py)
+tiktoken>=0.5.0
+
+# HTTP clients (TEI embed/rerank, entscheidsuche resolver)
+requests>=2.31
+aiohttp>=3.9
+
+# Numerical / array
+numpy>=1.26
+pyarrow>=15.0
+
+# Progress reporting
+tqdm>=4.66
