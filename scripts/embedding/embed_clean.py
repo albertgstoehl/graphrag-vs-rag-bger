@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""Clean standalone embedding script for aiserver01.
+"""Phase 1 of the bulk embedding pipeline.
 
-Phase 1: Embed all chunks via async aiohttp → save as numpy files to disk.
-Phase 2: Bulk-load numpy files into ChromaDB (separate step, run via --load).
+Reads a pre-chunked HuggingFace Arrow dataset, embeds every chunk via async
+HTTP calls to one or more TEI endpoints, and persists the resulting vectors
+as sharded numpy files under ``EMBED_DIR``. The companion script
+``load_qdrant.py`` consumes those shards and writes the points (vectors +
+payload) into a Qdrant collection.
+
+Historical note, an earlier iteration of this script also contained a
+ChromaDB writer. The project moved to Qdrant for production use and that
+branch was removed in May 2026.
 """
-import os, sys, time, asyncio, argparse
+import os, sys, time, asyncio
 import numpy as np
 
 # Must run from /data/thesis/workspace
@@ -12,14 +19,10 @@ sys.path.insert(0, os.getcwd())
 
 import aiohttp
 from datasets import load_from_disk
-import chromadb
-from chromadb.config import Settings
 
 # ── Config ──────────────────────────────────────────────────────────────
 BATCH_SIZE = 352          # 11 GPUs × 32 texts = 352 (skip GPU 2)
 MAX_PER_CALL = 32         # texts per TEI endpoint call
-CHROMA_MAX = 5000         # ChromaDB max per add() call
-PERSIST_DIR = os.environ.get("PERSIST_DIR", "/data/thesis/chromadb")
 EMBED_DIR = os.environ.get("EMBED_DIR", "/data/thesis/embeddings")
 EMBED_TIMEOUT = int(os.environ.get("EMBED_TIMEOUT_SECONDS", "120"))
 
@@ -166,102 +169,14 @@ async def run_embed(ds_name: str):
     print(f"\nDone embedding {ds_name}: {embedded} in {elapsed:.0f}s ({embedded/elapsed:.0f}/s)", flush=True)
 
 
-# ── Phase 2: Load numpy → ChromaDB ─────────────────────────────────────
-
-def run_load(ds_name: str):
-    """Load saved embeddings + dataset into ChromaDB."""
-    emb_dir = os.path.join(EMBED_DIR, ds_name)
-
-    print(f"\n{'='*60}", flush=True)
-    print(f"Load: {ds_name} → ChromaDB ({PERSIST_DIR})", flush=True)
-    print(f"{'='*60}", flush=True)
-
-    # Load dataset for metadata
-    path = f"data/prechunked/{ds_name}"
-    print(f"Loading {path}...", flush=True)
-    ds = load_from_disk(path)
-    total = len(ds)
-
-    # Load all embedding shards
-    shards = sorted([f for f in os.listdir(emb_dir) if f.endswith(".npy")])
-    print(f"Loading {len(shards)} embedding shards...", flush=True)
-    all_embs = np.concatenate([np.load(os.path.join(emb_dir, s)) for s in shards])
-    print(f"Loaded {all_embs.shape[0]} embeddings ({all_embs.shape[1]}d)", flush=True)
-
-    assert all_embs.shape[0] >= total, f"Embedding count {all_embs.shape[0]} < dataset {total}"
-
-    # ChromaDB
-    client = chromadb.PersistentClient(
-        path=PERSIST_DIR,
-        settings=Settings(anonymized_telemetry=False),
-    )
-    coll = client.get_or_create_collection(
-        name="bger",
-        metadata={
-            "hnsw:space": "cosine",
-            "hnsw:batch_size": 50000,
-            "hnsw:sync_threshold": 200000,
-            "hnsw:num_threads": 12,
-        },
-    )
-    existing = coll.count()
-    print(f"ChromaDB: {existing} existing vectors", flush=True)
-
-    t0 = time.time()
-    stored = 0
-    for start in range(0, total, CHROMA_MAX):
-        end = min(start + CHROMA_MAX, total)
-
-        chunk = ds[start:end]
-        keys = list(chunk.keys())
-        batch = [dict(zip(keys, vals)) for vals in zip(*chunk.values())]
-
-        ids = [d.get("chunk_id", d["decision_id"]) for d in batch]
-        embs = all_embs[start:end].tolist()
-
-        coll.add(
-            ids=ids,
-            embeddings=embs,
-            documents=[d["text"] for d in batch],
-            metadatas=[{
-                "decision_id": str(d.get("decision_id", "")),
-                "chunk_index": int(d.get("chunk_index", 0)),
-                "num_chunks": int(d.get("num_chunks", 1)),
-                "file_number": str(d.get("file_number") or ""),
-                "date": str(d.get("date") or ""),
-                "language": str(d.get("language") or ""),
-                "court": str(d.get("court") or ""),
-            } for d in batch],
-        )
-        stored += len(batch)
-
-        if stored % 50000 < CHROMA_MAX:
-            elapsed = time.time() - t0
-            rate = stored / elapsed if elapsed > 0 else 0
-            eta_m = (total - end) / rate / 60 if rate > 0 else 0
-            print(f"  {stored:>8d}/{total} | {rate:.0f}/s | ETA {eta_m:.0f}m", flush=True)
-
-    elapsed = time.time() - t0
-    final = coll.count()
-    print(f"\nDone loading {ds_name}: {stored} stored in {elapsed:.0f}s ({stored/elapsed:.0f}/s) | total: {final}", flush=True)
-
-
 # ── Main ────────────────────────────────────────────────────────────────
 
 async def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--load", action="store_true", help="Phase 2: load embeddings into ChromaDB")
-    args = parser.parse_args()
-
-    if args.load:
-        for ds_name in DATASETS:
-            run_load(ds_name)
-    else:
-        for ds_name in DATASETS:
-            await run_embed(ds_name)
+    for ds_name in DATASETS:
+        await run_embed(ds_name)
 
     print(f"\n{'='*60}", flush=True)
-    print("All phases complete.", flush=True)
+    print("Embedding complete. Next step: scripts/embedding/load_qdrant.py", flush=True)
 
 
 if __name__ == "__main__":
