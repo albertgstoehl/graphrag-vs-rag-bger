@@ -29,7 +29,7 @@ def qdrant() -> QdrantClient:
     # Read env at call time so /settings updates take effect on next call
     # after qdrant.cache_clear().
     return QdrantClient(
-        host=os.environ.get("QDRANT_HOST", "localhost"),
+        host=os.environ.get("QDRANT_HOST", "100.116.242.70"),
         port=int(os.environ.get("QDRANT_PORT", "6333")),
         check_compatibility=False, timeout=30,
     )

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Custom Query — Results{% endblock %}
+{% block content %}
+
+<a href="/custom-query" class="text-sm text-slate-500 hover:underline">← Neue Query</a>
+<h1 class="text-xl sm:text-2xl font-semibold mt-2 mb-3">Custom Query Results</h1>
+
+{% if error %}
+<div class="bg-rose-50 border border-rose-200 text-rose-800 rounded p-3 mb-4 text-sm">
+  {{ error }}
+</div>
+{% endif %}
+
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-4">
+
+  <div class="lg:col-span-8 bg-white rounded border border-slate-200 p-4 text-sm">
+    <h2 class="font-semibold mb-2">Query</h2>
+    <pre class="whitespace-pre-wrap text-xs text-slate-700 bg-slate-50 p-3 rounded leading-relaxed max-h-60 overflow-y-auto">{{ query_text }}</pre>
+  </div>
+
+  <div class="lg:col-span-4 bg-white rounded border border-slate-200 p-4 text-sm">
+    <h2 class="font-semibold mb-2">Konfiguration</h2>
+    <dl class="grid grid-cols-3 gap-y-1 text-xs">
+      <dt class="text-slate-500">Sprache</dt>
+      <dd class="col-span-2">{{ language }}{% if language == "auto" %} → {{ detected_language }}{% endif %}</dd>
+      <dt class="text-slate-500">Ranking</dt><dd class="col-span-2 font-mono">{{ ranking }}</dd>
+      <dt class="text-slate-500">k</dt><dd class="col-span-2 font-mono">{{ k }}</dd>
+      <dt class="text-slate-500">Seeds</dt><dd class="col-span-2 font-mono">{{ n_seeds }}</dd>
+    </dl>
+    {% if timings %}
+    <div class="mt-3 pt-3 border-t border-slate-100 text-xs">
+      <div class="font-semibold mb-1">Timings</div>
+      <div class="grid grid-cols-2 gap-y-0.5 font-mono">
+        {% for k_, v in timings.items() %}
+          <div class="text-slate-500">{{ k_ }}</div>
+          <div class="text-right">{{ '%.2f'|format(v) }} s</div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+{% if results_by_system %}
+<div class="overflow-x-auto scroll-hint">
+  <div class="grid gap-3"
+       style="grid-template-columns: repeat({{ results_by_system|length }}, minmax(220px, 1fr));">
+    {% for sys in results_by_system %}
+    <div class="bg-white rounded border border-slate-200">
+      <div class="bg-slate-100 px-3 py-2 border-b border-slate-200">
+        <div class="font-semibold text-sm">{{ sys.label }}</div>
+        <div class="text-xs text-slate-500 font-mono">{{ sys.key }}</div>
+      </div>
+      <ol class="divide-y divide-slate-100">
+        {% for r in sys.rows %}
+        <li class="px-3 py-2 text-xs">
+          <div class="flex items-baseline gap-1 mb-0.5">
+            <span class="text-slate-400 font-mono w-5">{{ r.rank }}.</span>
+            <span class="font-mono font-medium">
+              {% if r.file_number %}{{ r.file_number }}{% else %}{{ r.decision_id[:8] }}…{% endif %}
+            </span>
+          </div>
+          <div class="text-slate-500 flex flex-wrap gap-x-2 ml-6">
+            {% if r.date_ms %}
+              <span>{{ ((r.date_ms / 1000)|int)|string }}</span>
+            {% endif %}
+            {% if r.language %}<span>{{ r.language }}</span>{% endif %}
+            <span>score {{ '%.3f'|format(r.score) }}</span>
+            <span>ind {{ r.indegree }}</span>
+          </div>
+          <div class="ml-6 mt-1 flex gap-2">
+            {% if r.source_link %}
+            <a href="{{ r.source_link.url }}" target="_blank" rel="noopener"
+               class="text-sky-700 hover:underline">↗ {{ r.source_link.host }}</a>
+            {% endif %}
+          </div>
+          {% if r.text %}
+          <details class="ml-6 mt-1">
+            <summary class="cursor-pointer text-slate-400 hover:text-slate-600">Text</summary>
+            <div class="mt-1 text-slate-600 bg-slate-50 p-2 rounded">{{ r.text }}</div>
+          </details>
+          {% endif %}
+        </li>
+        {% else %}
+        <li class="px-3 py-4 text-center text-slate-400 text-xs">keine Treffer</li>
+        {% endfor %}
+      </ol>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

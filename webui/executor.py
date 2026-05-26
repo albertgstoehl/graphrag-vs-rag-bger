@@ -22,7 +22,7 @@ from typing import Optional
 from .db import RunStore
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent  # kg-rag-legal/
 EVAL_SCRIPTS = REPO_ROOT / "scripts" / "eval"
 
 

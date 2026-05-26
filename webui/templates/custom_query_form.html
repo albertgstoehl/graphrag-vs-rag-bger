@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Custom Query — kg-rag-control{% endblock %}
+{% block content %}
+
+<h1 class="text-xl sm:text-2xl font-semibold mb-1">Custom Query</h1>
+<p class="text-sm text-slate-500 mb-4">
+  Eigenen Sachverhalt eingeben oder Beispiel wählen — Top-k aller fünf
+  Retrieval-Systeme nebeneinander ansehen.
+</p>
+
+{% if error %}
+<div class="bg-rose-50 border border-rose-200 text-rose-800 rounded p-3 mb-4 text-sm">
+  {{ error }}
+</div>
+{% endif %}
+
+<form method="post" action="/custom-query"
+      x-data="{
+        text: '',
+        setExample(e) {
+          this.text = e;
+          this.$nextTick(() => document.getElementById('query_text').focus());
+        }
+      }"
+      class="bg-white rounded shadow-sm border border-slate-200 p-5 space-y-4 max-w-4xl">
+
+  <div>
+    <label class="block text-sm font-semibold mb-1" for="example_select">
+      Beispiel-Sachverhalt
+    </label>
+    <select id="example_select"
+            class="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+            @change="if ($event.target.value) {
+              const ex = JSON.parse($event.target.value);
+              setExample(ex.text);
+            }">
+      <option value="">— eigenen Text eingeben —</option>
+      {% for ex in examples %}
+        <option value='{{ {"text": ex.text}|tojson }}'>{{ ex.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="block text-sm font-semibold mb-1" for="query_text">
+      Sachverhalt
+      <span class="text-xs text-slate-400 font-normal">
+        Schreibe einen Sachverhalt im Stil der <code>facts</code>-Sektion
+        eines BGer-Urteils.
+      </span>
+    </label>
+    <textarea id="query_text" name="query_text" rows="10" required
+              x-model="text"
+              placeholder="Sachverhalt: A. Mit Verfügung vom ..."
+              class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono leading-relaxed"></textarea>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div>
+      <label class="block text-sm font-semibold mb-1" for="language">Sprache</label>
+      <select id="language" name="language"
+              class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+        <option value="auto">Auto</option>
+        <option value="de">Deutsch</option>
+        <option value="fr">Français</option>
+        <option value="it">Italiano</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-semibold mb-1" for="ranking">Ranking</label>
+      <select id="ranking" name="ranking"
+              class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+        {% for r in rankings %}
+          <option value="{{ r }}" {% if r == default_ranking %}selected{% endif %}>{{ r }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-semibold mb-1" for="k">k (Top-N)</label>
+      <select id="k" name="k"
+              class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+        {% for kv in k_values %}
+          <option value="{{ kv }}" {% if kv == default_k %}selected{% endif %}>{{ kv }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="pt-3 border-t border-slate-100 flex items-center gap-3">
+    <button class="bg-slate-900 text-white px-4 py-2 rounded text-sm">
+      Retrieve
+    </button>
+    <p class="text-xs text-slate-500">
+      Dauert etwa 15–30 s (Embed + Qdrant + 4 Expansionen + Ranking).
+    </p>
+  </div>
+</form>
+
+{% endblock %}

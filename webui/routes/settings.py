@@ -1,9 +1,9 @@
-"""Editable runtime settings for the AI service host and ports.
+"""Editable runtime settings — aiserver host + ports.
 
-Persisted via SettingsStore (SQLite in the webui state directory) so
-they survive restarts. On save we re-apply to `os.environ` and clear
-the inspector's QdrantClient cache so the next inspector request
-rebuilds the client against the new host."""
+Persisted via SettingsStore (SQLite on the webui-state PVC) so they
+survive pod restarts. On save we re-apply to `os.environ` and clear the
+inspector's QdrantClient cache so the next inspector request rebuilds
+the client against the new host."""
 
 from __future__ import annotations
 

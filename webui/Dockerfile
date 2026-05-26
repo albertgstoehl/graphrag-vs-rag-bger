@@ -1,4 +1,5 @@
-# Multi-stage build for the evaluation web UI
+# Multi-stage build for kg-rag-control
+# Stage 1: Python base + dependencies
 FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python deps: webui + pipeline in one venv
 COPY webui/requirements.txt /tmp/webui-req.txt
+COPY requirements-poc.txt /tmp/poc-req.txt
 
 RUN pip install --no-cache-dir -r /tmp/webui-req.txt \
  && pip install --no-cache-dir \
@@ -28,9 +30,10 @@ RUN pip install --no-cache-dir -r /tmp/webui-req.txt \
 COPY scripts/   /app/scripts/
 COPY webui/     /app/webui/
 
-# Writable mount points (back these with volumes when deploying)
+# Writable mount points (will be backed by PVCs in k3s)
 RUN mkdir -p /app/data/eval /app/webui/state /root/.cache/huggingface
 
+# Non-root user (optional — for now we stay root so PVC mounts are simple)
 EXPOSE 8000
 
 ENV WEBUI_STATE_DIR=/app/webui/state \

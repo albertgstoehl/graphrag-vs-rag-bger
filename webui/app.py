@@ -14,6 +14,7 @@ from .routes import metrics as metrics_routes
 from .routes import inspector as inspector_routes
 from .routes import settings as settings_routes
 from .routes import graph_overview as graph_overview_routes
+from .routes import custom_query as custom_query_routes
 
 
 app = FastAPI(title="kg-rag-control", version="0.1.0")
@@ -48,3 +49,4 @@ app.include_router(metrics_routes.router)
 app.include_router(inspector_routes.router)
 app.include_router(settings_routes.router)
 app.include_router(graph_overview_routes.router)
+app.include_router(custom_query_routes.router)

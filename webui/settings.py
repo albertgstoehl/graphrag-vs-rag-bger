@@ -22,8 +22,8 @@ from typing import Optional
 
 
 _DEFAULTS: dict[str, str] = {
-    # Host running Qdrant + TEI services. Editable in /settings.
-    "aiserver_host": "localhost",
+    # aiserver01-1 on Tailscale (replaces 100.95.37.85). Editable in /settings.
+    "aiserver_host": "100.116.242.70",
     "qdrant_port": "6333",
     "tei_embed_port": "8010",
     "tei_rerank_ports": "8011,8012,8013,8014",
