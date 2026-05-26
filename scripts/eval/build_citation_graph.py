@@ -18,10 +18,10 @@ Graph structure (NetworkX DiGraph):
 
 Output:
  - Prints summary statistics to stdout
- - Saves graph as pickle to data/eval/citation_graph.pkl (override via OUTPUT_DIR)
+ - Saves graph as pickle to /data/thesis/graph/citation_graph.pkl
 
 Usage:
-    python scripts/eval/build_citation_graph.py
+    /data/thesis/venv/bin/python build_citation_graph.py
 """
 
 import ast
@@ -36,14 +36,9 @@ import pyarrow.ipc as ipc
 # Configuration
 # ---------------------------------------------------------------------------
 
-# Path to the cached HuggingFace dataset shards for rcds/swiss_doc2doc_ir.
-# Override via DATASET_DIR; default points into the local HF cache.
-DATASET_DIR = os.environ.get(
-    "DATASET_DIR",
-    os.path.expanduser(
-        "~/.cache/huggingface/datasets/rcds___swiss_doc2doc_ir"
-        "/default/0.0.0/1c3a1e5200f8577d485bdb6ba7f17b17ce5d0d79"
-    ),
+DATASET_DIR = (
+    "/data/thesis/hf-cache/datasets/rcds___swiss_doc2doc_ir"
+    "/default/0.0.0/1c3a1e5200f8577d485bdb6ba7f17b17ce5d0d79"
 )
 
 # All five Arrow shards (train × 3, validation, test)
@@ -55,7 +50,7 @@ ARROW_SHARDS = [
     "swiss_doc2doc_ir-test.arrow",
 ]
 
-OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "data/eval")
+OUTPUT_DIR = "/data/thesis/graph"
 OUTPUT_PATH = os.path.join(OUTPUT_DIR, "citation_graph.pkl")
 
 

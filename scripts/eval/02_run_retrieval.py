@@ -23,7 +23,7 @@ RANKING STRATEGIES:
 K VALUES: 5, 10, 20
 
 OUTPUT:
-    data/eval/results/{system}_{ranking}_{k}.jsonl
+    /data/thesis/eval/results/{system}_{ranking}_{k}.jsonl
     Each line: {"query_id": "...", "retrieved": ["id1", "id2", ...]}
 
 USAGE:
@@ -46,7 +46,7 @@ from typing import Optional
 import requests
 
 # SentenceTransformer is used as a fallback when no TEI server is running.
-# It requires torch + GPU.
+# It requires torch + GPU — run this script with /data/vllm/venv/bin/python3.
 try:
     from sentence_transformers import SentenceTransformer as _ST
     _ST_AVAILABLE = True
@@ -59,35 +59,38 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 # Paths — override via env vars for local dev
-EVAL_DIR = Path(os.environ.get("EVAL_DIR", "data/eval"))
+EVAL_DIR = Path(os.environ.get("EVAL_DIR", "/data/thesis/eval"))
 QUERIES_FILE = EVAL_DIR / "eval_queries.jsonl"
 RESULTS_DIR = EVAL_DIR / "results"
-GRAPH_PATH = Path(os.environ.get("GRAPH_PATH", str(EVAL_DIR / "citation_graph.pkl")))
+GRAPH_PATH = Path(os.environ.get("GRAPH_PATH", "/data/thesis/graph/citation_graph.pkl"))
 
 # Qdrant
-QDRANT_HOST = os.environ.get("QDRANT_HOST", "localhost")
+QDRANT_HOST = os.environ.get("QDRANT_HOST", "aiserver01")
 QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))
 QDRANT_COLLECTION = "bger"
 RULINGS_SOURCE = "swiss_rulings_chunked"
 LEADING_SOURCE = "swiss_leading_decisions_chunked"
 LEGISLATION_SOURCE = "swiss_legislation_chunked"
 
-# TEI embedding server — text-embeddings-inference serving BGE-M3.
-# Override via TEI_HOST / TEI_PORTS env vars.
-TEI_HOST = os.environ.get("TEI_HOST", "localhost")
+# TEI embedding server — the BGE-M3 text-embeddings-inference service.
+# One instance deployed on aiserver01 via k8s (hostPort 8010).
+# Override via TEI_HOST / TEI_PORTS env vars if needed.
+TEI_HOST = os.environ.get("TEI_HOST", "aiserver01")
 TEI_PORTS = [int(p) for p in os.environ.get("TEI_PORTS", "8010").split(",")]
 
-# Cross-encoder reranker — TEI services exposing /rerank for (query, texts)
-# pairs. Multiple replicas can be deployed (one per GPU); the pipeline
-# distributes batches across all configured endpoints in parallel.
+# Cross-encoder reranker — served as TEI services on aiserver01.
+# TEI exposes a /rerank endpoint that scores (query, texts) pairs in one call.
+# Multiple replicas can be deployed (one per GPU); the pipeline distributes
+# batches across all configured endpoints in parallel.
 CROSS_ENCODER_MODEL = "BAAI/bge-reranker-v2-m3"
 CROSS_ENCODER_BATCH = int(os.environ.get("CROSS_ENCODER_BATCH", 32))
 # Per-candidate text cap (chars) before sending to TEI /rerank. Outlier chunk-0
 # texts can exceed the reranker's 8192-BPE pair limit even at batch_size=1,
 # yielding 413 Payload Too Large. ~4000 chars ≈ ~1000 BPE, leaving headroom
-# for the 4096-ws-token query side of the pair.
+# for the 4096-ws-token query side of the pair. Affected 10/12'678 queries in
+# run #89.
 CROSS_ENCODER_TEXT_CHARS = int(os.environ.get("CROSS_ENCODER_TEXT_CHARS", 4000))
-TEI_RERANK_HOST = os.environ.get("TEI_RERANK_HOST", "localhost:8011")
+TEI_RERANK_HOST = os.environ.get("TEI_RERANK_HOST", "aiserver01:8011")
 TEI_RERANK_URL = (
     os.environ.get("TEI_RERANK_URL")
     or f"http://{TEI_RERANK_HOST}/rerank"
@@ -125,11 +128,11 @@ log = logging.getLogger(__name__)
 
 
 # ── Retry helper ──────────────────────────────────────────────────────────────
-# TEI/Qdrant pods can restart frequently under sustained load. A single
-# transient ConnectionRefused or timeout would otherwise kill a multi-hour
-# run. This wrapper retries on common transient errors with exponential
-# backoff. Permanent errors (4xx HTTP, ValidationError) still propagate
-# immediately.
+# aiserver01's TEI/Qdrant pods restart frequently (observed 400+ TEI restarts
+# per day). A single transient ConnectionRefused or timeout would otherwise
+# kill a multi-hour run. This wrapper retries on common transient errors with
+# exponential backoff. Permanent errors (4xx HTTP, ValidationError) still
+# propagate immediately.
 
 import functools
 
@@ -195,7 +198,7 @@ def find_live_tei_endpoint() -> Optional[str]:
     We try each configured port and return the first that responds.
 
     Returns:
-        Base URL string like "http://localhost:8010", or None if none are alive.
+        Base URL string like "http://aiserver01:8010", or None if none are alive.
     """
     for port in TEI_PORTS:
         url = f"http://{TEI_HOST}:{port}"
@@ -238,11 +241,12 @@ def embed_texts(texts: list, endpoint: Optional[str]) -> list:
     if not _ST_AVAILABLE:
         raise RuntimeError(
             "No TEI server found AND sentence_transformers is not installed. "
-            "Install with `pip install sentence-transformers` (requires torch + CUDA)."
+            "Run this script with /data/vllm/venv/bin/python3 which has torch."
         )
     if _ST_MODEL is None:
         import os
-        os.environ.setdefault("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
+        os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0,1,3,4,5,6,7,8,9,10,11")
+        os.environ.setdefault("HF_HOME", "/data/thesis/hf-cache")
         log.info("Loading BGE-M3 model directly (no TEI server) ...")
         _ST_MODEL = _ST("BAAI/bge-m3", device="cuda")
         log.info("BGE-M3 loaded on CUDA.")
@@ -1741,7 +1745,7 @@ def run(
             "No live TEI endpoint found on ports %s. "
             "Falling back to direct SentenceTransformer loading (slower first query). "
             "To use TEI: docker run -d -p 8010:80 "
-            "-v $HOME/.cache/huggingface:/data "
+            "-v /data/thesis/hf-cache:/data "
             "ghcr.io/huggingface/text-embeddings-inference:1.7 "
             "--model-id BAAI/bge-m3",
             TEI_PORTS,
