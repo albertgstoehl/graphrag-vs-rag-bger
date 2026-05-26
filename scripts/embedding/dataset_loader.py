@@ -56,12 +56,12 @@ def load(name: str, streaming_fallback: bool = True) -> Dataset:
     hf_id = DATASETS[name]
     if streaming_fallback:
         print(f"  WARNING: {name} not cached locally, streaming from HF (slow)...")
-        print(f"  Run: python -m src.poc.dataset_loader  to download first.")
+        print(f"  Run: python -m scripts.embedding.dataset_loader  to download first.")
         return load_dataset(hf_id, split="train", streaming=True)
 
     raise FileNotFoundError(
         f"Local cache for {name} not found at {local}. "
-        f"Run: python -m src.poc.dataset_loader"
+        f"Run: python -m scripts.embedding.dataset_loader"
     )
 
 

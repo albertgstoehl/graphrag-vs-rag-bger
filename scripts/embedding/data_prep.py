@@ -41,7 +41,7 @@ def iter_all_rulings_chunked(batch_size: int = 512):
     Each chunk has decision_id, chunk_index, and the chunk text.
     Yields: (chunk_batch: list[dict], stats: dict)
     """
-    from src.poc.dataset_loader import load
+    from scripts.embedding.dataset_loader import load
 
     print("  Loading dataset from disk...", flush=True)
     dataset = load("swiss_rulings")
@@ -99,7 +99,7 @@ def load_bger_sample(
     only_ids: set[str] | None = None,
 ) -> list[dict]:
     """Load BGer decisions under max_tokens from HuggingFace."""
-    from src.poc.dataset_loader import load
+    from scripts.embedding.dataset_loader import load
 
     dataset = load("swiss_rulings")
 
